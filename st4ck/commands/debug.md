@@ -276,3 +276,12 @@ Present the full debug report:
 4. **Accepting agent's self-assessment** of "fixed" without re-running → REJECT. Run the tests.
 5. **Moving on when console has errors** even if UI looks fine → REJECT. Console errors are bugs.
 6. **Not checking related code** after a fix (the fix might break something adjacent) → REJECT. Run regression.
+7. **NEVER accept "BLOCKED" or "can't authenticate" or "user doesn't exist" as a reason to stop.**
+   Real example of what NOT to do: An agent reported "BLOCKED: J9 Pie Chart — Can't authenticate. The regular user profile doesn't exist on the branch DB" and STOPPED. The correct action was to create the user (via signup flow, direct DB insert, or test profile setup) and CONTINUE. Missing test data is a solvable problem, not a blocker.
+   - If a test needs a user → CREATE ONE (signup flow, seed script, or direct insert)
+   - If a test needs data → SEED IT (the SEED→VERIFY→ASSERT→CLEANUP pattern exists for this)
+   - If a test needs a specific state → SET IT UP
+   - "The DB was created with `with_data: false`" is not an excuse — seed the data you need.
+8. **NEVER accept environment/infrastructure as an excuse to skip.** "The server wasn't running", "the database was empty", "the profile didn't exist" — these are all solvable. Set up the preconditions, then run. If an agent says it can't proceed due to missing data: tell it to create the data first.
+9. **NEVER let an agent mark a block as "skipped" or "not applicable" without YOUR approval.** Every block was authored for a reason. If an agent wants to skip, it must explain why to you, and you decide — not the agent.
+10. **NEVER rely on error toasts for verification.** Toasts are transient — they can be missed by AI agents and disappear before screenshots. Always check the **dev console** (`browser_console_messages`) which is permanent and complete. If an agent reports "no error toast appeared so it passed" — REJECT. Check the console.
