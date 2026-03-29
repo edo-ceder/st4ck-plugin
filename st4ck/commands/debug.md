@@ -204,11 +204,21 @@ Run:
 ### Fix Loop
 ```
 while failures exist:
-    if code_bug → dispatch code-agent to fix → re-run ALL tests
+    if code_bug → dispatch code-agent to fix → re-run ALL tests (not just the failing one)
     if test_bug → dispatch qa-author to fix → re-review → re-run ALL tests
 
     MAX 3 attempts per issue, then STOP and report to human
 ```
+
+### Post-Fix Regression (MANDATORY)
+
+After ALL bugs are fixed and individual tests pass:
+1. Re-run the ENTIRE test suite — all suites, all tests
+2. This catches regressions from fixes to centralized files (routing, auth, layout, shared components)
+3. If new failures appear, they go back into the fix loop — don't categorize them as "agent issues" or "test design" without investigation
+4. Only declare "done" when the full regression is green
+
+**The pattern "fix T3, rerun T3, pass, move to T4" is WRONG.** The correct pattern is "fix T3, rerun T1+T2+T3, pass ALL, then move to T4."
 
 ---
 
@@ -292,3 +302,6 @@ Present the full debug report:
 11. **NEVER hand-translate test blocks into agent prompts.** Give the agent the test case ID and let it fetch blocks from st4ck-qa. When an orchestrator manually paraphrases blocks into a custom prompt, blocks get dropped. Real example: agent received a 4-block test, hand-wrote blocks 1, 2, 4 into the prompt, and silently dropped Block 3 (the backend SQL verification that would have caught the critical data leak). The test "passed" on 3/4 blocks and the bug shipped.
 12. **NEVER let an agent claim a "tooling limitation" without verifying it.** Real example: agent said "browser agents can't execute SQL, so Block 3 was silently skipped." In reality, the agent had Supabase MCP access and could have run the query. The limitation was fabricated to justify skipping. When an agent says "I can't do X" — check if they actually have the tools to do X. They usually do.
 13. **NEVER accept a partial block count as a full pass.** If a test has 4 blocks and the agent reports 3 PASS — that's not a pass. Ask: "Where is Block 3?" Count the blocks in the report against the blocks in the test case. Every block must be accounted for.
+14. **NEVER declare victory without regression.** After fixing bugs in centralized files (routing, auth, layout, shared hooks), you MUST re-run ALL suites — not just the one that failed. Real example: agent fixed App.tsx, Auth.tsx, AppSidebar.tsx across multiple bug fixes, only re-ran the specific failing test each time, declared "57/57 passed." User asked "and no fixes we did along the way should have the tests rerun as regressions?" — agent admitted it never checked. The regression run found Bug #18.
+15. **NEVER categorize failures as "not code bugs" without verifying.** Agents have a completion bias — they want to report "done" and will categorize remaining failures as "test design issues", "infra problems", "agent-browser limitations", or "behavior questions" to avoid more work. Real example: 9 test failures categorized as "none are code bugs" — user said "why not fix and rerun?" — turned out one was a real missing RLS policy (Bug #18). Always fix and rerun. Let the test prove it's not a code bug, don't assume.
+16. **NEVER stop at "X/Y passing, remaining are test issues."** If 53/57 pass and 4 are "test design issues" — fix the test designs and rerun. Those 4 tests exist for a reason. Every test must be GREEN or explicitly waived by the human.
