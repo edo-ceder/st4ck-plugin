@@ -1,0 +1,23 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "st4ck-marketplace",
+  "version": "1.0.0",
+  "description": "st4ck plugin for Claude Code — role-separated implementation flow with structural quality enforcement",
+  "owner": {
+    "name": "st4ck",
+    "email": "hello@st4ck.io"
+  },
+  "plugins": [
+    {
+      "name": "st4ck",
+      "description": "Role-separated implementation flow for st4ck projects — from requirements through code, QA, and delivery with structural enforcement of quality via agent role separation and tool restriction.",
+      "version": "1.0.0",
+      "author": {
+        "name": "st4ck",
+        "email": "hello@st4ck.io"
+      },
+      "source": ".",
+      "category": "development"
+    }
+  ]
+}
