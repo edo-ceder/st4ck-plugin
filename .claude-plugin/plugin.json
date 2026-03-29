@@ -1,0 +1,9 @@
+{
+  "name": "st4ck",
+  "version": "1.0.0",
+  "description": "Role-separated implementation flow for st4ck projects — from requirements through code, QA, and delivery with structural enforcement of quality via agent role separation and tool restriction.",
+  "author": {
+    "name": "st4ck",
+    "email": "hello@st4ck.io"
+  }
+}
