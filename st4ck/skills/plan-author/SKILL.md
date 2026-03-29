@@ -47,6 +47,13 @@ Break the implementation into phases that:
 For each phase, specify:
 - **Unit tests** the code agent should write (pure functions, utilities)
 - **E2E test outlines** for the QA author (what to test, not how — the QA methodology handles the how)
+- **Negative tests**: What should NOT happen — crashes, console errors, data leakage, blank screens. For every new page/route, include: "page loads without console errors or white screen"
+- **Boundary tests**: Date boundaries (timezone offsets, day transitions), empty/null data, zero-item states, rapid user interactions (double-click, concurrent mutations)
+- **Framework gotchas**: Call out known pitfalls for the project's stack. Examples:
+  - Supabase: `.single()` vs `.maybeSingle()` for queries that may return 0 rows
+  - React: hydration mismatches, useEffect cleanup, stale closure in event handlers
+  - RTL layouts: explicit test assertions for RTL alignment if the app uses RTL
+  - Date handling: `toISOString()` produces UTC — use local date formatting for user-facing comparisons
 
 ### 6. Migration Files
 If the plan requires database changes:

@@ -138,11 +138,34 @@ After QA Author completes:
    "agentResults.qaReview": { "signed": N, "rejected": N, "issues": [...] }
    ```
 
-## Convergence: QA Execution
+## Convergence: Smoke Gate + QA Execution
+
+### Step 3e-pre: Smoke Gate
+
+After Track A completes but BEFORE dispatching QA Runner, run a quick smoke check to catch crashes and silent errors early. This saves full fix loop iterations.
+
+1. Start the app (if not already running)
+2. Navigate to each new/modified route from the plan
+3. For each route, check:
+   - **Page renders** (no white screen / blank page)
+   - **Zero console errors** (`browser_console_messages` — no uncaught exceptions, no React errors)
+   - **Zero 4xx/5xx responses** in network requests (no API failures on page load)
+
+4. If ANY smoke check fails:
+   - Dispatch **code-agent** to fix the specific issue (with the console error / network failure as context)
+   - Re-run smoke gate after fix
+   - Max 2 smoke fix attempts — if still failing, report to human with evidence
+
+5. Update state file:
+   ```json
+   "agentResults.smokeGate": { "routes_checked": N, "console_errors": N, "network_errors": N, "verdict": "PASS/FAIL" }
+   ```
+
+**Rationale**: TDZ crashes, missing imports, and query errors produce white screens or 406 errors that are trivially detectable before running the full test suite. Catching them here avoids wasting QA execution time.
 
 ### Step 3e: QA Runner
 
-After BOTH tracks complete:
+After smoke gate passes AND Track B completes:
 
 1. Dispatch the **qa-runner** with:
    - Suite ID(s) from QA Author

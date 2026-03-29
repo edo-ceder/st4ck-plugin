@@ -62,6 +62,13 @@
 - [E2E scenario 1: what to verify from user perspective]
 - [E2E scenario 2: edge case to cover]
 
+**Negative tests**:
+- [What should NOT happen: crashes, console errors, blank screens]
+- [Page loads without console errors or white screen]
+
+**Boundary tests**:
+- [Date/timezone edge cases, empty data, rapid interactions]
+
 **Migration** (if applicable):
 ```sql
 -- Migration: YYYYMMDDHHMMSS_description.sql
@@ -78,10 +85,17 @@
 
 ## Test Strategy Summary
 
-| Requirement | Unit Tests (Code Agent) | E2E Tests (QA Author) |
-|-------------|------------------------|----------------------|
-| R1 | [utility functions] | [user flow verification] |
-| R2 | [data transformation] | [edge case + error state] |
+| Requirement | Unit Tests (Code Agent) | E2E Tests (QA Author) | Negative / Boundary Tests |
+|-------------|------------------------|----------------------|--------------------------|
+| R1 | [utility functions] | [user flow verification] | [crash/error scenarios] |
+| R2 | [data transformation] | [edge case + error state] | [timezone/empty data] |
+
+## Framework Gotchas
+
+| Stack Component | Known Pitfall | Test / Mitigation |
+|----------------|--------------|-------------------|
+| [e.g., Supabase] | [e.g., .single() on optional rows → 406] | [use .maybeSingle()] |
+| [e.g., Date handling] | [e.g., toISOString() is UTC] | [use local date for comparisons] |
 
 ---
 
