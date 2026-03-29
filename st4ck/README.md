@@ -100,6 +100,21 @@ Execute signed regression suites and report results:
 - Observe-only — does not attempt fixes
 - Schedulable for nightly runs
 
+### `/debug` — Bug Investigation & Fix
+
+```
+/debug <bug description | dev task IDs | "console errors" | st4ck spec ID>
+```
+
+Dev-manager-led debug operation with role separation:
+1. **Intake** — consolidate bugs by code area
+2. **Research** — parallel codebase-explorer agents per area
+3. **Test gap analysis** — find missing tests that should have caught this
+4. **Fix** — code-agent fixes root causes (rejects workarounds)
+5. **Write missing tests** — qa-author closes test gaps
+6. **Verify** — smoke gate + full test run with mandatory console/network checks
+7. **Regression assessment** — recommend tests for permanent regression suite
+
 ## Agent Architecture
 
 | Agent | Role | Tool Access |
@@ -119,8 +134,14 @@ Execute signed regression suites and report results:
 - Features that benefit from automated QA
 - Work where quality enforcement matters
 
+**Use `/debug` for:**
+- Multiple related bugs to investigate and fix
+- Bugs that need test gap analysis
+- Post-deployment issues where you want regression protection
+- When you want to push through a fix with full verification
+
 **Don't use for:**
-- Quick bug fixes (just fix them)
+- Single trivial bug (just fix it)
 - Config changes or small refactors
 - Exploratory prototyping
 
