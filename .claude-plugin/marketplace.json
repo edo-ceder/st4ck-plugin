@@ -16,7 +16,7 @@
         "name": "st4ck",
         "email": "hello@st4ck.io"
       },
-      "source": ".",
+      "source": "./st4ck",
       "category": "development"
     }
   ]
