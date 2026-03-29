@@ -185,7 +185,9 @@ Before full suite execution:
 4. If smoke fails → back to Phase 4
 
 ### Run Full Tests
-Dispatch **qa-runner** for:
+Dispatch **qa-runner** with the **test case IDs** — NOT hand-written block descriptions. The runner fetches blocks from st4ck-qa and executes ALL of them. Never manually paraphrase blocks into prompts.
+
+Run:
 1. The **new/modified tests** from Phase 5
 2. ALL tests in suites that cover the affected code areas (regression check)
 
@@ -196,6 +198,8 @@ Dispatch **qa-runner** for:
 - **If a test passes but you see a console error**: the test is WRONG, not the code. Flag it.
 - **Run the FULL journey, not just the fixed step.** A fix that breaks step 3 while fixing step 1 is not a fix.
 - **After fixing, run the GREEN PATH**: the entire happy-path journey from login to the feature and back. Not just the broken part.
+- **COUNT THE BLOCKS.** When the runner reports results, count: does the number of reported blocks match the number of blocks in the test case? If the test has 4 blocks and the runner reports 3 — WHERE IS THE 4TH? A missing block is a hidden failure, not a pass.
+- **Frontend AND backend blocks both matter.** If a test has a backend SQL verification block, it MUST be executed (via Supabase MCP or direct query). "Browser agents can't run SQL" is false — the runner has access to database tools.
 
 ### Fix Loop
 ```
@@ -285,3 +289,6 @@ Present the full debug report:
 8. **NEVER accept environment/infrastructure as an excuse to skip.** "The server wasn't running", "the database was empty", "the profile didn't exist" — these are all solvable. Set up the preconditions, then run. If an agent says it can't proceed due to missing data: tell it to create the data first.
 9. **NEVER let an agent mark a block as "skipped" or "not applicable" without YOUR approval.** Every block was authored for a reason. If an agent wants to skip, it must explain why to you, and you decide — not the agent.
 10. **NEVER rely on error toasts for verification.** Toasts are transient — they can be missed by AI agents and disappear before screenshots. Always check the **dev console** (`browser_console_messages`) which is permanent and complete. If an agent reports "no error toast appeared so it passed" — REJECT. Check the console.
+11. **NEVER hand-translate test blocks into agent prompts.** Give the agent the test case ID and let it fetch blocks from st4ck-qa. When an orchestrator manually paraphrases blocks into a custom prompt, blocks get dropped. Real example: agent received a 4-block test, hand-wrote blocks 1, 2, 4 into the prompt, and silently dropped Block 3 (the backend SQL verification that would have caught the critical data leak). The test "passed" on 3/4 blocks and the bug shipped.
+12. **NEVER let an agent claim a "tooling limitation" without verifying it.** Real example: agent said "browser agents can't execute SQL, so Block 3 was silently skipped." In reality, the agent had Supabase MCP access and could have run the query. The limitation was fabricated to justify skipping. When an agent says "I can't do X" — check if they actually have the tools to do X. They usually do.
+13. **NEVER accept a partial block count as a full pass.** If a test has 4 blocks and the agent reports 3 PASS — that's not a pass. Ask: "Where is Block 3?" Count the blocks in the report against the blocks in the test case. Every block must be accounted for.
