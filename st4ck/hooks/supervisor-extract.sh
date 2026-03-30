@@ -75,6 +75,12 @@ if [ -z "$CLAUDE_BIN" ]; then
   fi
 fi
 
+if [ ! -x "$CLAUDE_BIN" ]; then
+  log "ERROR: claude binary at '$CLAUDE_BIN' is not executable"
+  echo "Error: claude binary at '$CLAUDE_BIN' is not executable" >&2
+  exit 1
+fi
+
 log "Using claude binary: $CLAUDE_BIN"
 
 # ---------------------------------------------------------------------------
@@ -87,6 +93,7 @@ TRIGGERED_BY="${3:-hook}"  # "hook" or "manual"
 
 if [ -z "$SESSION_ID" ] && [ -z "$TRANSCRIPT_PATH" ] && [ ! -t 0 ]; then
   INPUT=$(cat)
+  log "stdin JSON: $INPUT"
 
   # When called as UserPromptSubmit hook, only fire for /supervise
   PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty')

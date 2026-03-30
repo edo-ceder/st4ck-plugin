@@ -1,6 +1,6 @@
 ---
 description: Run a supervisor check on the current session — catches drift, incomplete work, and premature completion claims.
-argument-hint: [off]
+argument-hint:
 ---
 
 # /supervise

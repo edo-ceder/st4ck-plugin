@@ -7,6 +7,10 @@
 
 set -euo pipefail
 
+# Resolve script location to find plugin files regardless of cwd
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+PLUGIN_DIR="$(dirname "$SCRIPT_DIR")"  # st4ck/ directory
+
 TARGET="${1:-../po-research-plugin}"
 
 if [ ! -d "$TARGET" ]; then
@@ -18,11 +22,11 @@ fi
 echo "Syncing to $TARGET..."
 
 # Core research phases (shared source of truth)
-cp shared/po-research-core.md "$TARGET/shared/po-research-core.md"
+cp "$PLUGIN_DIR/shared/po-research-core.md" "$TARGET/shared/po-research-core.md"
 
 # Agent definitions (shared between both plugins)
-cp agents/codebase-explorer.md "$TARGET/agents/code-explorer.md"
-cp agents/solution-analyst.md "$TARGET/agents/solution-analyst.md"
+cp "$PLUGIN_DIR/agents/codebase-explorer.md" "$TARGET/agents/code-explorer.md"
+cp "$PLUGIN_DIR/agents/solution-analyst.md" "$TARGET/agents/solution-analyst.md"
 
 echo "Synced 3 files:"
 echo "  shared/po-research-core.md  → shared/po-research-core.md"
