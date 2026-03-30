@@ -28,7 +28,7 @@ set -euo pipefail
 # Configuration
 # ---------------------------------------------------------------------------
 
-STATE_DIR=".st4ck"
+STATE_DIR="$(pwd)/.st4ck"
 LOG_FILE="$STATE_DIR/supervisor-debug.log"
 MAX_LOG_BYTES=1048576
 MAX_CONVERSATION_CHARS=60000
@@ -85,12 +85,12 @@ SESSION_ID="${1:-}"
 TRANSCRIPT_PATH="${2:-}"
 TRIGGERED_BY="${3:-hook}"  # "hook" or "manual"
 
-if [ -z "$SESSION_ID" ] && [ ! -t 0 ]; then
+if [ -z "$SESSION_ID" ] && [ -z "$TRANSCRIPT_PATH" ] && [ ! -t 0 ]; then
   INPUT=$(cat)
 
   # When called as UserPromptSubmit hook, only fire for /supervise
   PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty')
-  if [ "$TRIGGERED_BY" != "manual" ] && ! printf '%s' "$PROMPT" | grep -q 'st4ck:supervise\|/supervise'; then
+  if [ "$TRIGGERED_BY" != "manual" ] && ! printf '%s' "$PROMPT" | grep -qF '/supervise'; then
     exit 0  # Not our trigger — exit immediately (~50ms overhead)
   fi
 
@@ -118,14 +118,28 @@ if [ -z "$TRANSCRIPT_PATH" ] || [ ! -f "$TRANSCRIPT_PATH" ]; then
   exit 1
 fi
 
-REAL_TRANSCRIPT="$(cd "$(dirname "$TRANSCRIPT_PATH")" && pwd -P)/$(basename "$TRANSCRIPT_PATH")"
+# Resolve full path including filename to prevent symlink escape
+if command -v realpath &>/dev/null; then
+  REAL_TRANSCRIPT="$(realpath "$TRANSCRIPT_PATH" 2>/dev/null || echo "")"
+else
+  REAL_TRANSCRIPT="$(cd "$(dirname "$TRANSCRIPT_PATH")" && pwd -P)/$(basename "$TRANSCRIPT_PATH")"
+fi
+
+if [ -z "$REAL_TRANSCRIPT" ]; then
+  log "ERROR: could not resolve transcript path"
+  exit 1
+fi
+
 case "$REAL_TRANSCRIPT" in
   "$HOME/.claude"/*) ;;
   *)
-    log "ERROR: transcript path outside ~/.claude/"
+    log "ERROR: transcript path '$REAL_TRANSCRIPT' outside ~/.claude/"
     exit 1
     ;;
 esac
+
+# Use resolved path for all subsequent reads
+TRANSCRIPT_PATH="$REAL_TRANSCRIPT"
 
 STATE_FILE="$STATE_DIR/supervisor-state-${SESSION_ID}.json"
 
@@ -205,7 +219,8 @@ log "Extracted $(printf '%s' "$CONVERSATION" | wc -c | tr -d ' ') chars"
 
 EXISTING_STATE=""
 if [ -f "$STATE_FILE" ]; then
-  EXISTING_STATE=$(cat "$STATE_FILE")
+  # Extract the last_result from JSON state file for incremental context
+  EXISTING_STATE=$(jq -r '.last_result // empty' "$STATE_FILE" 2>/dev/null || cat "$STATE_FILE")
   log "Loaded existing state ($(printf '%s' "$EXISTING_STATE" | wc -c | tr -d ' ') chars)"
 fi
 
@@ -332,15 +347,30 @@ if [ -z "$RESULT" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Save state file (for incremental updates)
+# Save state file as JSON (for incremental updates + Phase 2 parsing)
 # ---------------------------------------------------------------------------
 
-{
-  printf '<!-- Session: %s -->\n' "$SESSION_ID"
-  printf '<!-- Updated: %s -->\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  printf '\n'
-  printf '%s\n' "$RESULT"
-} > "$STATE_FILE"
+# Read previous check_count if state file exists
+PREV_CHECK_COUNT=0
+if [ -f "$STATE_FILE" ] && command -v jq &>/dev/null; then
+  PREV_CHECK_COUNT=$(jq -r '.check_count // 0' "$STATE_FILE" 2>/dev/null || echo 0)
+fi
+NEW_CHECK_COUNT=$((PREV_CHECK_COUNT + 1))
+
+# Escape the result for JSON embedding
+RESULT_ESCAPED=$(printf '%s' "$RESULT" | jq -Rs '.')
+
+jq -n \
+  --arg session_id "$SESSION_ID" \
+  --arg updated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --argjson check_count "$NEW_CHECK_COUNT" \
+  --argjson last_result "$RESULT_ESCAPED" \
+  '{
+    session_id: $session_id,
+    updated_at: $updated_at,
+    check_count: $check_count,
+    last_result: $last_result
+  }' > "$STATE_FILE"
 
 log "State saved to $STATE_FILE"
 
