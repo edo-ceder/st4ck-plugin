@@ -115,6 +115,21 @@ Dev-manager-led debug operation with role separation:
 6. **Verify** — smoke gate + full test run with mandatory console/network checks
 7. **Regression assessment** — recommend tests for permanent regression suite
 
+### `/supervise` — Session Supervisor
+
+```
+/supervise
+```
+
+Checks if the agent is on track, drifting, or trying to stop prematurely:
+- Reads the session transcript and reconstructs evolving user intent
+- Compares intent against what the agent actually did
+- Catches: incomplete work, skipped blocks, fabricated limitations, data contamination
+- Injects a nudge that the agent must follow, or STOPs for human input
+- Run it whenever you suspect the agent drifted or declared "done" too early
+
+Phase 2 (coming): automated Stop hook that runs this check every time the agent tries to stop.
+
 ## Agent Architecture
 
 | Agent | Role | Tool Access |
@@ -123,7 +138,7 @@ Dev-manager-led debug operation with role separation:
 | Code Reviewer | Independent code review | `tools`: Read, Grep, Glob, LS, Bash |
 | Codebase Explorer | Explore and understand code | `tools`: Read, Grep, Glob, LS, Bash |
 | Solution Analyst | PO-friendly solution analysis | `tools`: Read, Grep, Glob, LS, Bash |
-| QA Author | Write tests from specs | `disallowedTools`: Edit, Write, Bash, NotebookEdit |
+| QA Author | Write tests from code + running app | `disallowedTools`: Edit, Write, Bash, NotebookEdit |
 | QA Reviewer | Review and sign tests | `disallowedTools`: Edit, Write, Bash, NotebookEdit |
 | QA Runner | Execute tests, report evidence | `tools`: Read, Grep, Glob, LS + st4ck-qa execution tools + browser |
 
