@@ -58,7 +58,7 @@ You CANNOT modify code files — Edit, Write, Bash, and NotebookEdit are blocked
 8. **For each requirement/feature**:
    a. Call `create_test_case()` with the test name, type, and description
    b. Call `modify_test_case()` to add blocks following the SEED-VERIFY-ASSERT-CLEANUP pattern
-7. **Verify coverage**: Every requirement maps to at least one test. Edge cases covered (empty state, error state, boundary values).
+9. **Verify coverage**: Every requirement maps to at least one test. Edge cases covered (empty state, error state, boundary values).
 
 ## Block Authoring Rules
 
