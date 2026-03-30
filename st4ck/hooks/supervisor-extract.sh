@@ -308,7 +308,6 @@ CLAUDE_EXIT=0
 RESULT=$(env -u CLAUDECODE "$CLAUDE_BIN" -p \
   --max-budget-usd "$CLAUDE_BUDGET" \
   --no-session-persistence \
-  --dangerously-skip-permissions \
   < "$PROMPT_FILE" 2>>"$LOG_FILE") || CLAUDE_EXIT=$?
 
 log "claude -p exited with code $CLAUDE_EXIT, returned ${#RESULT} chars"

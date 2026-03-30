@@ -173,10 +173,13 @@ Phase 2 (coming): automated Stop hook that runs this check every time the agent 
 ## Known Limitations (v1)
 
 - **Single-project only** — features spanning multiple repos are not supported
-- **QA Author code isolation is prompt-based** — the agent has Read access to the full codebase (needed for UI label verification) but is instructed to test from specs, not code
+- **QA Author code isolation is prompt-based** — the agent has Read access to the full codebase and browser access for UI exploration, but is instructed to default to code (not PRD/specs unless provided)
 - **Version test promotion is manual** — promoting version tests to regression is a manual st4ck operation
 - **Sequential browser sessions** — parallel QA execution across suites is unverified; falls back to sequential
+- **QA Runner requires Playwright MCP** — the runner's tool allowlist uses `mcp__playwright__*` tool names. If you use `agent-browser` instead of Playwright MCP, the runner won't have browser access. Configure Playwright MCP or update the runner's tool list to match your browser automation setup.
+- **Code Reviewer uses Sonnet** — intentionally hardcoded to `model: sonnet` for consistent code review quality regardless of session model. All other agents inherit the session model.
 - **`disallowedTools` verification needed** — if this field doesn't work for plugin agents, QA Author/Reviewer will need full `tools` allowlists
+- **Supervisor (Phase 1) is manual** — you must run `/supervise` yourself. Phase 2 will add an automated Stop hook.
 
 ## License
 

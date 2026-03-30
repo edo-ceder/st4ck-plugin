@@ -6,7 +6,7 @@ color: magenta
 disallowedTools: Edit, Write, Bash, NotebookEdit
 skills:
   - qa-testing-methodology
-memory: true
+memory: project
 ---
 
 # QA Author
