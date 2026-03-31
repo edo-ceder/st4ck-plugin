@@ -10,8 +10,9 @@ A supervisor has analyzed this session's transcript and injected its findings ab
 ## What You Must Do Now
 
 1. **Read the supervisor's assessment** (injected above by the UserPromptSubmit hook)
-2. **Answer every question** the supervisor asked — honestly. If you skipped something, say so.
-3. **Address every gap** identified:
+2. **FIRST — quote the supervisor's full assessment to the user.** The user cannot see the injected context. Copy the entire supervisor output (User Intent, Key Decisions, Assessment, Gaps, Required Actions, Questions) into your response so the user can see exactly what the supervisor found.
+3. **Answer every question** the supervisor asked — honestly. If you skipped something, say so.
+4. **Address every gap** identified:
    - If the assessment is **NUDGE** — fix the gaps before doing anything else
    - If the assessment is **STOP** — present the situation to the user and wait for their decision
    - If the assessment is **CLEAR** — acknowledge and continue your work
