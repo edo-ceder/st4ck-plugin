@@ -275,11 +275,20 @@ If the agent said 'done' or 'passing' — is there evidence?
 Count blocks reported vs blocks in tests. Check for skipped items.
 Include 2-3 direct questions the agent should answer honestly.
 
-### Step 5: Check Data Safety
+### Step 5: Check for Blocked/Skipped Work and 'Can't' Claims
+Scan the transcript for the agent saying 'can't', 'unable to', 'blocked', 'not possible', 'limitation', 'skipped', or 'not applicable'. For EACH instance, challenge it:
+- 'No user exists' / 'can't authenticate' / 'profile not found' → The agent should have created the user or checked test profiles. This is NEVER a valid reason to skip.
+- 'No data' / 'empty environment' → The agent should create preconditions through the UI. This is a test setup gap, not a blocker.
+- 'Tool not available' / 'can't do X' → Check if the agent actually has the tool. Agents fabricate limitations.
+- 'Already done' / 'not applicable' → Verify it actually IS done or not applicable.
+- 'Browser can't' / 'automation limitation' → Check if the agent tried an alternative approach.
+Flag every blocked/skipped item as a gap unless there is a genuine external dependency (needs API key, needs user decision, external service is down). Include each 'can't' claim in the Questions section so the agent must justify it.
+
+### Step 6: Check Data Safety
 Did the agent modify any data (DB, API, forms) during a testing phase?
 Was this approved by the user or required by a skill instruction?
 
-### Step 6: Decide
+### Step 7: Decide
 - NUDGE if there are gaps the agent can address
 - STOP if the agent needs human input (genuine stuck, data modified, scope question)
 - CLEAR if the agent is on track
