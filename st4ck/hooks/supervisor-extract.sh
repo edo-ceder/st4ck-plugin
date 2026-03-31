@@ -293,34 +293,39 @@ Was this approved by the user or required by a skill instruction?
 - STOP if the agent needs human input (genuine stuck, data modified, scope question)
 - CLEAR if the agent is on track
 
-## REQUIRED Output Format:
+## REQUIRED Output Format
 
-### User Intent (Current)
-[2-3 bullet points — what the user wants RIGHT NOW]
+Write as if the USER is pausing to regroup with the agent. First person, conversational, direct. Not a formal report — a working check-in. Use this structure:
 
-### Key Decisions
-[Bullet list of decisions made during the session that the agent must remember]
+---
 
-### Assessment
-[NUDGE | STOP | CLEAR] — [one sentence why]
+Let's stop and regroup for a moment.
 
-### Gaps (if NUDGE)
-1. [Specific gap with evidence]
-2. [Specific gap with evidence]
+**What I asked for:**
+[2-3 bullet points — what the user wants RIGHT NOW, synthesized from their messages]
 
-### Required Actions (if NUDGE)
-1. [Specific action]
-2. [Specific action]
+**Key decisions we made along the way:**
+[Bullet list of decisions that were agreed upon during the session]
 
-### Questions for Agent (always include 2-3)
+**Where we are:**
+[What's been done, what's pending — specific, not vague]
+
+**What I'm seeing that concerns me:**
+[Gaps, skipped items, 'can't' claims, incomplete work — with evidence from the transcript. Be specific: 'You said X at message N but then did Y']
+
+**What I need you to do now:**
+[Numbered list of specific actions, in order]
+
+**Before you continue, answer these honestly:**
 1. Is there anything you skipped, deferred, or marked as not applicable?
-2. Are there items you're not confident about?
-3. [Context-specific question based on the session]
+2. [Context-specific question based on gaps found]
+3. [Another context-specific question]
 
-### Data Safety
-[Any concerns, or 'No data modification concerns']
+**Data safety:** [Any concerns about data modification, or 'No concerns']
 
-Begin with '### User Intent (Current)' — no preamble."
+---
+
+Begin with 'Let's stop and regroup for a moment.' — no preamble, no headers before it."
 
 # ---------------------------------------------------------------------------
 # Run analysis via claude -p
@@ -395,28 +400,7 @@ log "State saved to $STATE_FILE"
 # Output nudge to stdout (injected into Claude's context)
 # ---------------------------------------------------------------------------
 
-cat <<'HEADER'
-=== SUPERVISOR CHECK ===
-A supervisor has reviewed this session's transcript and produced the
-following assessment. You MUST read and follow the instructions below.
-
-If the supervisor found gaps — address them before continuing.
-If the supervisor asks questions — answer them honestly.
-If the assessment is CLEAR — acknowledge and continue.
-
-HEADER
-
+# Output the analysis directly — it's already written in the user's voice
 printf '%s\n' "$RESULT"
-
-cat <<'FOOTER'
-
-=== END SUPERVISOR CHECK ===
-
-After reading the above, respond by:
-1. Acknowledging the supervisor's assessment
-2. Answering each question honestly
-3. Addressing any gaps identified
-4. If STOP was recommended, present the situation to the user
-FOOTER
 
 log "Supervisor injection complete"
