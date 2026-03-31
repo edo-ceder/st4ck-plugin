@@ -180,7 +180,7 @@ Return this strategy to the orchestrator for confirmation before writing tests. 
 
 ### Step 5: Prepare for Execution
 
-1. **Test profiles**: Use the profile IDs from your dispatch prompt. If not provided, call `get_test_profiles` for real profile UUIDs. Every frontend block needs a `profile_id`.
+1. **Test profiles**: Use the profile IDs from your dispatch prompt. If not provided, call `get_test_profiles` for real profile UUIDs. If NO profiles exist, create them with `create_test_profile` — you need at least one profile per user role the tests will exercise. NEVER skip tests or declare "blocked" because profiles don't exist. Every frontend block needs a `profile_id`.
 2. **Suite**: Use the suite ID from your dispatch prompt. If not provided, call `create_test_suite` with the agreed name, category, and module.
 3. **Methodology key**: Call `get_qa_methodology()` to obtain the `methodology_key` required by `create_test_case`.
 
