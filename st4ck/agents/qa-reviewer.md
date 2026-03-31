@@ -78,6 +78,40 @@ Call `sign_test_review(test_case_id, review_token, attestation)` with:
 **If the test fails any check:**
 Report the specific failure(s) to the orchestrator. Do NOT sign a test you have concerns about.
 
+## Block Format Rules (Reference for Validation)
+
+Use these rules when checking items 5 and 8 on the checklist.
+
+### Block Structure
+```json
+{
+  "block": 1,
+  "block_type": "frontend | backend",
+  "run_type": "serial",
+  "browser_window": 1,
+  "profile_id": "uuid",
+  "critical": true,
+  "actions": [
+    { "action": "what the user does", "expected": "what should happen" }
+  ],
+  "expected_outcome": "summary of block outcome"
+}
+```
+
+### Rules
+- **Frontend blocks**: browser/UI steps. MUST have `profile_id`. Without it, credentials resolve to null and the block fails silently.
+- **Backend blocks**: READ-ONLY. SELECT or API GET only. NEVER INSERT/UPDATE/DELETE. If the test has data-mutating SQL in a backend block, that is a **hard reject**.
+- **Never mix** frontend and backend steps in the same block.
+- **Critical**: mark `true` when subsequent blocks depend on success. Setup = critical. Edge case = can be non-critical.
+- **Max 7 actions** per block. More than 7 = split it.
+- **Multi-user**: different `browser_window` numbers for different users. Max 3 windows per scenario.
+- **Steps reference visible UI text** ("click 'Save Changes'"), not component names or CSS selectors.
+- **Expected outcomes are specific**: exact text, counts, amounts. "Content is displayed" = reject.
+- **Navigation via UI**: after login, navigate through sidebar/menus/buttons, not direct URLs.
+- **SVG/charts**: verify data outcomes (legend text, filter results), not visual properties. Mark visual-only checks as non-critical.
+- **Async flows**: separate trigger block from verification block. Verification block can be non-critical if timing is unreliable.
+- **Block counts by type**: smoke/sanity 1-2 OK. e2e/acceptance 3-8 minimum. 1-block e2e = always wrong.
+
 ## Failure Patterns — Know What to Look For
 
 Ordered by frequency. These are the most common issues in authored tests:
