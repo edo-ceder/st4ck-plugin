@@ -97,11 +97,12 @@ if [ -z "$SESSION_ID" ] && [ -z "$TRANSCRIPT_PATH" ] && [ ! -t 0 ]; then
 
   # When called as UserPromptSubmit hook, only fire for /supervise
   PROMPT=$(printf '%s' "$INPUT" | jq -r '.prompt // empty')
-  if [ "$TRIGGERED_BY" != "manual" ] && ! printf '%s' "$PROMPT" | grep -qF '/supervise'; then
+  if [ "$TRIGGERED_BY" != "manual" ] && ! printf '%s' "$PROMPT" | grep -qiF 'supervise'; then
     exit 0  # Not our trigger — exit immediately (~50ms overhead)
   fi
 
-  log "=== Triggered by prompt containing /supervise ==="
+  log "=== TRIGGER MATCHED — running supervisor analysis ==="
+  log "PROMPT: $PROMPT"
   SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // empty')
   TRANSCRIPT_PATH=$(printf '%s' "$INPUT" | jq -r '.transcript_path // empty')
 fi
