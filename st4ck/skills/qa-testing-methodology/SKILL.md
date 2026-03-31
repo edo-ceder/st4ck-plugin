@@ -7,7 +7,9 @@ description: st4ck QA test authoring methodology for sub-agents — deep dive, s
 
 This skill is injected into your context by the orchestrator. It covers **how to author tests** (steps 3-7). The orchestrator already handled steps 1-2: exploring the running app, interviewing the user, and agreeing on scope. You receive that context in your dispatch prompt.
 
-**Before creating any test case**, call `get_qa_methodology()` once to obtain a `methodology_key` (required by `create_test_case` and `review_test`). You don't need to read its content — everything is in this skill.
+**Before creating or reviewing any test case**, call `get_qa_methodology()` once to obtain a `methodology_key` (required by `create_test_case` and `review_test`). You don't need to read its content — everything is in this skill.
+
+**If you are a REVIEWER** (not an author): skip to the **Review** section and **Failure Patterns** at the end. The authoring process (steps 3-7) is for the author agent. You need the block format rules, data philosophy, and review checklist to verify tests against.
 
 ---
 
