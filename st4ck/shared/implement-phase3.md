@@ -96,15 +96,26 @@ After code agent completes successfully:
 
 Launch in parallel with Track A:
 
-1. Prepare QA Author context:
-   - The plan's requirements table (NOT the code diff — code doesn't exist yet from QA's perspective)
-   - st4ck spec document IDs (for acceptance criteria)
-   - App navigation structure (sidebar labels, route names from Phase 1 explorer agents)
-   - Test user profiles from st4ck (`get_test_profiles`)
+1. Prepare QA Author context and dispatch the **qa-author** with:
+   ```
+   ## Test Authoring Assignment
 
-2. Dispatch the **qa-author** with the context above and:
-   - Suite category: "version" (for feature implementation)
-   - Instructions to call `get_qa_methodology()` for detailed authoring rules
+   ### Suite ID: [uuid] (create with create_test_suite first)
+   ### Suite Category: version
+   ### Profile IDs: [role]=[uuid], [role]=[uuid] (from get_test_profiles)
+
+   ### Source Material:
+   - Requirements: [the plan's requirements table]
+   - Acceptance criteria: [from spec documents if available]
+   - App navigation: [sidebar labels, route names from Phase 1 explorers]
+
+   ### Context from Phase 1:
+   - Key UI labels found: [from explorer agents]
+   - Routes: [relevant routes]
+   - User roles: [roles and permissions]
+   ```
+
+   The qa-author has the full methodology preloaded via its skill. It starts at step 3 (deep dive). Pass the Phase 1 exploration results so it doesn't re-explore.
 
 3. When the agent returns, validate:
    - Suite ID created?

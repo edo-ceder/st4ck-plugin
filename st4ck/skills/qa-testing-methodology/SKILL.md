@@ -1,11 +1,13 @@
 ---
 name: qa-testing-methodology
-description: Complete st4ck QA testing methodology — 7-step process, block format, data philosophy, review checklist. Self-contained; no need to call get_qa_methodology().
+description: st4ck QA test authoring methodology for sub-agents — deep dive, strategy with edge cases, block format, data philosophy, review checklist. Covers steps 3-7 of the process (steps 1-2 are the orchestrator's job).
 ---
 
 # st4ck QA Testing Methodology
 
-This skill contains the complete QA methodology. You do NOT need to call `get_qa_methodology()` — everything is here. You DO still need to call `get_qa_methodology()` once at the start of a session to obtain a `methodology_key` (required by `create_test_case` and `review_test`), but you do not need to read its content.
+This skill is injected into your context by the orchestrator. It covers **how to author tests** (steps 3-7). The orchestrator already handled steps 1-2: exploring the running app, interviewing the user, and agreeing on scope. You receive that context in your dispatch prompt.
+
+**Before creating any test case**, call `get_qa_methodology()` once to obtain a `methodology_key` (required by `create_test_case` and `review_test`). You don't need to read its content — everything is in this skill.
 
 ---
 
@@ -60,47 +62,9 @@ Every test should ultimately verify something the user can observe on screen. Ba
 
 ---
 
-## The 7-Step Process
+## Your Process (Steps 3-7)
 
-Steps 1-4 are understanding and planning. Steps 5-6 are writing. Step 7 is verification. Do not skip or reorder — each step produces context the next step depends on.
-
-### Step 1: Explore the Running App + Light Code Scan
-
-Before touching any test tool, get your bearings.
-
-**Explore the running app via browser** (MANDATORY):
-- Use `agent-browser` if available, or Playwright MCP tools as fallback.
-- Navigate the screens/routes relevant to the feature.
-- Note ACTUAL button labels, sidebar items, form fields, navigation paths.
-- Take screenshots for reference.
-
-This prevents the #1 authoring failure: writing tests with wrong UI labels because you guessed from code instead of looking at the app. For no-code platforms (Bubble, etc.) this is the ONLY way to learn the UI.
-
-**Do a light code scan:**
-- Read the main routing file (e.g., `App.tsx`) to understand page structure.
-- Check the sidebar/navigation component to see what the user sees.
-- Skim 2-3 key files in the area you will be testing to understand technology, complexity, and coding style.
-
-**Form a mental model:**
-- What industry is this app in? A personal finance tracker has different testing needs than an enterprise compliance platform.
-- How complex is the UI? Simple forms, or multi-step wizards with conditional logic?
-- What is the data model? Simple CRUD, or interconnected entities with cascading effects?
-
-### Step 2: Clarify Scope with the User
-
-**For small requests (1-3 tests):**
-Read the relevant code, then confirm: "I'll write an e2e test covering [specific scenario]. Sound right?"
-
-**For module or version-level requests:**
-Ask before writing anything:
-- What area/module should be covered?
-- What depth level? Quick sanity, standard regression, or shipping-ready?
-- Any specific scenarios they are worried about?
-- Which test profiles (user roles) should be covered?
-
-Present your estimated scope: "I see roughly 12-15 tests for the expenses module at standard depth. That covers CRUD, filtering, wallet integration, and access control. Want me to proceed, or adjust?"
-
-**You MUST NOT skip this step.** Do not start writing tests without user confirmation on scope.
+The orchestrator handled steps 1-2 (app exploration, user interview, scope agreement). You start at step 3. Do not skip or reorder — each step produces context the next step depends on.
 
 ### Step 3: Deep Dive into the Code
 
@@ -212,17 +176,17 @@ Access Control (2 tests, integration):
 - Expenses Access — Read-only user cannot create expenses [high]
 ```
 
-Discuss with the user. Adjust based on feedback. **Only proceed when they confirm.**
+Return this strategy to the orchestrator for confirmation before writing tests. If you are writing tests directly (not via orchestrator), present the strategy in your output before proceeding.
 
 ### Step 5: Prepare for Execution
 
-1. **Get test profiles**: Call `get_test_profiles` for real profile UUIDs. Every frontend block needs a `profile_id`.
-2. **Create or identify the suite**: Call `create_test_suite` with the agreed name, category, and module.
-3. **Get methodology key**: Call `get_qa_methodology()` to obtain the `methodology_key` required by `create_test_case`.
+1. **Test profiles**: Use the profile IDs from your dispatch prompt. If not provided, call `get_test_profiles` for real profile UUIDs. Every frontend block needs a `profile_id`.
+2. **Suite**: Use the suite ID from your dispatch prompt. If not provided, call `create_test_suite` with the agreed name, category, and module.
+3. **Methodology key**: Call `get_qa_methodology()` to obtain the `methodology_key` required by `create_test_case`.
 
 ### Step 6: Write the Tests
 
-**Test ONE first.** Author a single test case, verify it can run (with a sub-agent if needed), then apply the pattern to remaining tests. Do not batch-author 42 tests based on an unverified pattern.
+**Test ONE first.** Author a single test case and self-review it against the checklist before batching the rest. Do not batch-author 42 tests based on an unverified pattern. If the first test has issues, fix the pattern before applying it to remaining tests.
 
 Every test MUST follow the block format rules (next section) and create its own preconditions.
 

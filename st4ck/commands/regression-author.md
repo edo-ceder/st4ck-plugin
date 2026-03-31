@@ -29,36 +29,55 @@ From `$ARGUMENTS`:
 
 ---
 
-## Phase 1: Survey
+## Phase 1: Explore & Interview (Steps 1-2 of the methodology)
 
-1. **Explore the running app**: Launch the app in a browser. Navigate the main screens, sidebar, and navigation. Note actual module names, labels, and structure as the user sees them.
+This is YOUR job as the orchestrator. The qa-author sub-agents you dispatch later will NOT do this — they start at step 3 (deep dive).
 
-2. **Explore the codebase**: Scan the relevant areas:
-   - Current module structure, routes, components
-   - Data model and API endpoints for the target scope
-   - User roles and permission boundaries
+### Step 1: Explore the Running App + Code
 
-3. **Read PRD tree** (if exists and in context): Call `get_prd_tree()` and identify nodes for the target scope.
+1. **Explore the running app in a browser** (MANDATORY):
+   - Use `agent-browser` if available, or Playwright MCP tools as fallback
+   - Navigate the main screens, sidebar, and navigation
+   - Note ACTUAL module names, button labels, sidebar items, form fields
+   - Take screenshots for reference
+   - For no-code platforms (Bubble, etc.) this is the ONLY way to learn the UI
 
-4. **Check existing regression suites**: Call `get_test_suites()` filtered by `category: "regression"` to avoid duplicating.
+2. **Scan the codebase**:
+   - Read the main routing file to understand page structure
+   - Check the sidebar/navigation component
+   - Identify module boundaries: routes, components, data model, API endpoints
+   - Note user roles and permission boundaries
 
-5. **Present scope to user**:
-   ```
-   ## Regression Scope: [Module Name]
+3. **Form a mental model**:
+   - What industry is this app? Testing needs vary by domain.
+   - How complex is the UI? Simple forms vs multi-step wizards?
+   - What is the data model? Simple CRUD vs interconnected entities?
 
-   ### Code Coverage
-   - [N] routes/components identified in this module
-   - [N] already have regression tests
-   - [N] need new regression tests
+4. **Check existing coverage**: Call `get_test_suites(category: "regression")` to avoid duplicating. Read PRD tree if in context.
 
-   ### Existing Regression Suites
-   - [Suite name]: [N] tests covering [areas]
+### Step 2: Interview the User
 
-   ### Proposed Coverage
-   - Core flows: [list]
-   - Edge cases: [list — empty states, boundaries, error states, permission boundaries]
-   - Cross-role scenarios: [list]
-   ```
+Present your findings and ask:
+- **Depth level**: Quick sanity (2-5 tests), standard regression (10-20), or shipping-ready (20-40+)?
+- **Priority areas**: Any specific scenarios they're worried about?
+- **Roles to cover**: Which user roles need test coverage?
+
+Present the proposed scope:
+```
+## Regression Scope: [Module Name]
+
+### What I Found
+- [N] routes/components in this module
+- [N] already have regression tests
+- [N] need new regression tests
+
+### Proposed Coverage
+- Core flows: [list — the paths real users take daily]
+- Edge cases: [list — empty states, boundaries, error states, permission boundaries, lifecycle transitions]
+- Cross-role scenarios: [list — handoff between roles, permission boundaries]
+
+### Depth: [standard regression — 15 tests]
+```
 
 ### Human Gate
 
@@ -70,20 +89,35 @@ From `$ARGUMENTS`:
 
 ### Per-Module Flow
 
+Before dispatching, prepare:
+1. **Profiles**: Call `get_test_profiles()` once — pass IDs to all agents
+2. **Suite**: Call `create_test_suite()` per module — pass suite ID to agent
+
 For each module in scope, dispatch a **qa-author** agent with:
 
-1. **Module scope**: Which features/areas to cover from the approved strategy
-2. **Suite category**: `regression`
-3. **Source priority reminder**: Code + running app first. Explore the UI before writing.
-4. **Profile IDs**: From `get_test_profiles()` (fetch once, pass to all agents)
-5. **Suite ID**: From `create_test_suite()` (create one per module)
+```
+## Test Authoring Assignment
 
-The qa-author agent follows the 7-step process from its preloaded methodology skill:
-- Step 1: Explore the running app + light code scan
-- Step 3: Deep dive into code, produce research artifacts
-- Step 4: Propose strategy (the orchestrator already did this, but the agent refines per-module)
-- Step 6: Write tests — test ONE first, then batch
-- Step 7: Self-review before returning
+### Module: [name]
+### Suite ID: [uuid]
+### Suite Category: regression
+### Profile IDs: [role]=[uuid], [role]=[uuid]
+
+### Scope (from user-approved strategy):
+- Core flows: [list]
+- Edge cases: [list]
+- Cross-role: [list]
+- Depth: [standard regression — N tests]
+
+### Context from survey:
+- App URL: [url]
+- Key UI labels found: [sidebar items, button text, form fields]
+- Routes: [relevant routes discovered]
+- User roles: [roles and their permissions]
+- Existing coverage: [what's already tested — don't duplicate]
+```
+
+The qa-author agent has the full methodology preloaded via its skill. It starts at step 3 (deep dive into code) — steps 1-2 are done (that's what you just did above). Pass your survey findings so it doesn't re-explore from scratch.
 
 ### Test ONE First
 
