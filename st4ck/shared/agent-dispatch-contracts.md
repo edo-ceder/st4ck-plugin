@@ -220,6 +220,14 @@ Suite Name: [name]
 
 ### Environment
 [App URL, any environment-specific config]
+
+### Model
+Haiku (hardcoded in agent definition — do NOT override)
+
+### Budget Limits (CRITICAL)
+- Max tool calls per block: 100 (HARD LIMIT — stop immediately at 100)
+- Max approaches per failed action: 3
+When a limit is hit, report the block as error with diagnosis `exceeded_block_budget` or `same_action_exhausted` and move to the next block.
 ```
 
 ### Expected Output
@@ -238,7 +246,7 @@ Passed: [N] | Failed: [N] | Flaky: [N] | Error: [N] | Skipped: [N]
 ### Failed Tests (with diagnosis)
 **[Test Name]** (ID: [uuid])
 - Block [N]: [block description]
-- Diagnosis: [code_bug | test_bug | flakiness | environment]
+- Diagnosis: [code_bug | test_bug | flakiness | environment | exceeded_block_budget | same_action_exhausted]
 - Expected: [what test expected]
 - Actual: [what browser showed]
 - Evidence: [screenshot reference, console errors]

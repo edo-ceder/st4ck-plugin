@@ -104,6 +104,13 @@ Launch in parallel with Track A:
    ### Suite Category: version
    ### Profile IDs: [role]=[uuid], [role]=[uuid] (from get_test_profiles)
 
+   ### Approved Test Journeys (CONTRACT — implement ALL rows marked Ready)
+   [Copy the FULL Test Journeys table from the approved plan]
+
+   This table is your contract. You MUST implement every row with Status=Ready.
+   You MAY add edge cases you discover during code reading, but you CANNOT
+   drop any planned flow. The user already approved this coverage.
+
    ### Source Material:
    - Requirements: [the plan's requirements table]
    - Acceptance criteria: [from spec documents if available]
@@ -120,10 +127,11 @@ Launch in parallel with Track A:
 3. When the agent returns, validate:
    - Suite ID created?
    - Test case IDs listed?
-   - Coverage mapping: every requirement has at least one test?
-   - Edge cases covered (empty state, error state, boundary)?
+   - **Journey coverage**: every row in the Test Journeys table (Status=Ready) has a corresponding test case?
+   - **Edge cases**: all edge rows from the plan are covered?
+   - Any additional edge cases the author discovered beyond the plan?
 
-4. If coverage gaps exist, dispatch qa-author again for additional tests.
+4. If coverage gaps exist (planned flows not implemented), dispatch qa-author again with the specific missing rows.
 
 5. Update state file:
    ```json
@@ -182,10 +190,13 @@ After smoke gate passes AND Track B completes:
    - Suite ID(s) from QA Author
    - Signed test case IDs
    - App URL / environment info
+   - Model: Haiku (hardcoded — do NOT override to a more expensive model)
+   - Budget limits: 100 tool calls/block (hard limit), 3 approaches/failed action
 
 2. Read the execution results:
    - **All green** → proceed to Phase 4
    - **Flaky tests** → note in report, no fix loop
+   - **Budget exceeded** (`exceeded_block_budget`, `same_action_exhausted`) → report to human, do NOT enter fix loop (these are agent automation limits, not code/test bugs)
    - **Confirmed failures** → enter fix loop (Step 3f)
 
 3. Update state file:

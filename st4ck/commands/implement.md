@@ -79,14 +79,37 @@ Using the **plan-author** skill:
 1. Generate an implementation plan with:
    - Phased tasks with acceptance criteria
    - Security analysis specific to this feature
-   - Test strategy (unit tests per phase, QA journey outlines)
+   - **Test Journeys table** — complete user journeys with ALL edge cases and expected results
    - Migration files if needed
 
 2. Save the plan to a file: `docs/development-plans/[date]_[feature-name].md`
 
-### Human Gate 2
+### Human Gate 2 (Includes Test Journey Review)
 
-Present the full plan to the user.
+Present the full plan to the user. **Pay special attention to the Test Journeys table.**
+
+#### ⚠️ Open Questions Block Approval
+
+If any test flow has Status = `⚠️ OPEN`, the plan **CANNOT be approved**. Present all open questions to the user:
+
+```markdown
+## ⚠️ Open Questions (must answer before approval)
+
+The following edge cases have ambiguous expected behavior. I need your input:
+
+1. **T1.2** (Expense CRUD Lifecycle): User submits expense with zero amount
+   → Should this be rejected with an error, or allowed as a $0 expense?
+
+2. **T2.3** (Filtering): User applies filter then navigates away and back
+   → Should filters persist or reset?
+
+Answer each one so I can finalize the test coverage.
+```
+
+**After the user answers:**
+1. Update each answered flow's Expected Result and set Status to `Ready`
+2. Re-present the updated Test Journeys table for confirmation
+3. Verify **zero ⚠️ OPEN rows remain**
 
 **STOP. Wait for human approval.**
 

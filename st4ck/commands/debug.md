@@ -51,6 +51,26 @@ If multiple bugs are reported:
 
 Each group becomes a single investigation unit — one agent researches the code area once, not per-bug.
 
+### Establish Environment
+
+Before any research or fixes, determine where the bugs are and where fixes will be tested:
+
+1. **What branch are we on?** (`git branch --show-current`)
+2. **Where does this branch deploy?** (Vercel preview URL? Localhost only? Staging?)
+3. **What backend does it use?** (Which Supabase project? Shared with another branch?)
+4. **Are there edge functions or migrations involved?** If yes, how are they deployed? (CI/CD on push? Manual `supabase functions deploy`?)
+
+Present this to the user:
+```
+Environment:
+- Branch: [branch]
+- Frontend: [URL or localhost]
+- Backend: [Supabase project / environment]
+- Deploy method: [auto on push / manual / CI]
+```
+
+This context carries through every phase — especially Phase 6 where you must test the right environment.
+
 ---
 
 ## Phase 2: Research (Parallel Agents)
@@ -175,17 +195,44 @@ After QA Author returns, dispatch **qa-reviewer** to review and sign.
 
 ---
 
+## Phase 5.5: Deploy Gate (MANDATORY)
+
+After fixes are written, you MUST get them to a testable environment before Phase 6. **Fixing code locally and retesting on the old deployed version proves nothing.**
+
+1. **Inventory what changed:**
+   - Frontend code (components, hooks, routes)?
+   - Edge functions / serverless functions?
+   - Database migrations?
+
+2. **For each type, make it live:**
+
+   | What changed | Action required |
+   |---|---|
+   | Frontend only | Push branch → wait for preview deploy, OR test on localhost |
+   | Edge functions | Push branch AND deploy to the target Supabase project (`supabase functions deploy`) |
+   | Migrations | Push branch AND apply to target Supabase (`supabase db push`) |
+   | Mix of the above | ALL of the above — every layer must be deployed to the SAME environment |
+
+3. **Verify deployment landed** before moving on:
+   - Frontend: hit the URL, confirm the change is visible (not cached old version)
+   - Edge functions: call one and confirm new behavior (or check deploy logs)
+   - Migrations: confirm table/column/policy exists on target DB
+
+**If you cannot deploy** (e.g., no CLI access to Supabase, CI handles it), tell the user what needs deploying and WAIT. Do not proceed to test on a stale environment.
+
+---
+
 ## Phase 6: Run & Verify (NO SHORTCUTS)
 
 ### Smoke Gate First
-Before full suite execution:
+Before full suite execution, test on the environment where **all** fixes are now live (from Phase 5.5):
 1. Navigate to each affected route
 2. Check browser console — **ZERO errors required**
 3. Check network tab — **ZERO 4xx/5xx required**
-4. If smoke fails → back to Phase 4
+4. If smoke fails → back to Phase 4 (and re-deploy after fixing)
 
 ### Run Full Tests
-Dispatch **qa-runner** with the **test case IDs** — NOT hand-written block descriptions. The runner fetches blocks from st4ck-qa and executes ALL of them. Never manually paraphrase blocks into prompts.
+Dispatch **qa-runner** (runs on **Haiku** — hardcoded, do NOT override) with the **test case IDs** and **budget limits** (100 tool calls/block, 3 approaches/failed action) — NOT hand-written block descriptions. The runner fetches blocks from st4ck-qa and executes ALL of them. Never manually paraphrase blocks into prompts.
 
 Run:
 1. The **new/modified tests** from Phase 5
@@ -204,11 +251,14 @@ Run:
 ### Fix Loop
 ```
 while failures exist:
-    if code_bug → dispatch code-agent to fix → re-run ALL tests (not just the failing one)
+    if code_bug → dispatch code-agent to fix → DEPLOY (Phase 5.5) → re-run ALL tests
     if test_bug → dispatch qa-author to fix → re-review → re-run ALL tests
+    if exceeded_block_budget / same_action_exhausted → SKIP (not a code/test bug — agent hit automation limit, report to human)
 
     MAX 3 attempts per issue, then STOP and report to human
 ```
+
+Every code fix iteration requires re-deployment before retesting. Never retest on a stale environment.
 
 ### Post-Fix Regression (MANDATORY)
 
@@ -305,3 +355,5 @@ Present the full debug report:
 14. **NEVER declare victory without regression.** After fixing bugs in centralized files (routing, auth, layout, shared hooks), you MUST re-run ALL suites — not just the one that failed. Real example: agent fixed App.tsx, Auth.tsx, AppSidebar.tsx across multiple bug fixes, only re-ran the specific failing test each time, declared "57/57 passed." User asked "and no fixes we did along the way should have the tests rerun as regressions?" — agent admitted it never checked. The regression run found Bug #18.
 15. **NEVER categorize failures as "not code bugs" without verifying.** Agents have a completion bias — they want to report "done" and will categorize remaining failures as "test design issues", "infra problems", "agent-browser limitations", or "behavior questions" to avoid more work. Real example: 9 test failures categorized as "none are code bugs" — user said "why not fix and rerun?" — turned out one was a real missing RLS policy (Bug #18). Always fix and rerun. Let the test prove it's not a code bug, don't assume.
 16. **NEVER stop at "X/Y passing, remaining are test issues."** If 53/57 pass and 4 are "test design issues" — fix the test designs and rerun. Those 4 tests exist for a reason. Every test must be GREEN or explicitly waived by the human.
+17. **NEVER retest on a stale environment.** Real example: agent fixed a phase label bug in `ChatDrawer.tsx` locally, then dispatched qa-runner against the Vercel preview URL — which still had the OLD code because nothing was pushed. All 4 tests failed with the same pre-fix symptoms. Agent said "will pass after deployment" instead of deploying first. If you fix code and don't push/deploy, you're retesting the old version. The cycle is: fix → push/deploy → verify deployment landed → THEN retest.
+18. **NEVER forget edge functions and migrations.** Real example: agent fixed `prompt-builder.ts` (an edge function) and `ChatDrawer.tsx` (frontend), pushed the branch (frontend auto-deployed to Vercel), but never ran `supabase functions deploy` — so the edge function on the Supabase project was still the old version. User had to ask "but are they deployed to the supa db branch?" Every layer of the stack must be deployed to the same environment before testing.

@@ -135,45 +135,63 @@ Every value in the artifact MUST trace back to a file you actually read. If you 
 Present a concrete plan before writing any tests:
 
 - Suite name and category (regression or version)
-- Test list with names (following naming convention), types, and priorities
-- Grouping — by feature area, user flow, or risk level
+- Test journeys (NOT individual operations — see below)
+- Grouping — by user journey, not by CRUD verb
 - Coverage gaps — what you are intentionally not covering and why
 - Estimated count by depth level
 
-**Edge case discovery is mandatory at this step.** For each feature area, explicitly consider:
+#### E2E Tests Are Journeys, Not Individual Operations
 
-| Category | Examples |
-|----------|----------|
-| Empty states | No data yet, first-time user, cleared history |
-| Boundary values | Zero, negative, max length, special characters, Unicode |
-| Permission boundaries | Viewer doing owner actions, cross-tenant access, expired sessions |
-| Error states | Network failure, invalid input, duplicate submission, timeout |
-| Concurrent users | Two users editing same record, race conditions |
-| Lifecycle transitions | Status changes (draft to published), state machine edges, undo/redo |
+**CRITICAL**: An e2e test is a complete user journey — login → setup → action → verification. "Create expense" and "Edit expense" are NOT separate e2e tests. They are steps within a "CRUD Lifecycle" journey.
+
+**Smoke tests CAN be individual checks** (1-2 blocks, shallow, fast). But any test typed `e2e` or `acceptance` MUST be a multi-step journey.
+
+#### Edge Case Discovery (Mandatory)
+
+For EVERY journey, systematically sweep these categories:
+
+| Category | What to check |
+|----------|--------------|
+| Empty/zero states | First-time user, no data, zero amounts, empty lists |
+| Boundary values | Zero, negative, max length, special characters, Unicode/RTL |
+| Permission boundaries | Wrong role attempts action, cross-tenant access, expired sessions |
+| Error paths | Invalid input, duplicate submission, network failure, timeout |
+| State transitions | Status changes, undo after save, back-button after submit |
+| Concurrent/timing | Double-click submit, rapid navigation, stale data after tab switch |
+| Data integrity | Persists after refresh, related records update, cascade delete |
 
 Include edge cases in the test list from the start — not as an afterthought.
 
-Example strategy:
+#### When Dispatched From /implement
+
+If the orchestrator provides an **approved Test Journeys table** from the plan, that table is your **contract**. You MUST implement every row marked `Ready`. You may add discovered edge cases the plan missed, but you CANNOT drop planned flows. The user already approved these flows — they expect coverage for all of them.
+
+#### Every E2E Journey Creates Its Own Data Via the UI
+
+Every e2e journey MUST start with data creation steps via the UI. No journey may assume pre-existing data — it must work on a clean environment with only login credentials. If the journey tests filtering, it starts by creating filterable data. If it tests deletion, it creates something to delete first. Always via UI, never SQL.
+
+#### Example Strategy
 
 ```
-Expenses Module — Standard Regression (15 tests)
+Expenses Module — Standard Regression (8 tests)
 
-CRUD Operations (5 tests, e2e):
-- Expenses CRUD — Add variable expense with merchant and category [high]
-- Expenses CRUD — Edit expense amount and date [medium]
-- Expenses CRUD — Delete expense with confirmation [medium]
-- Expenses CRUD — Add fixed/commitment expense [high]
-- Expenses Validation — Duplicate expense name validation [low]
+Expense CRUD Lifecycle (1 journey + 3 edge cases, e2e):
+- Expenses CRUD Lifecycle — Create expense via form → verify in list → edit amount → verify → delete → verify gone [critical]
+  Edge: Create with special characters in name (emoji, quotes) → saved verbatim [medium]
+  Edge: Create duplicate name → error shown, no duplicate created [medium]
+  Edge: Delete with cascade → tags/attachments also removed [high]
 
-Filtering & Views (4 tests, e2e):
-- Expenses View — Switch between variable and fixed tabs [high]
-- Expenses View — Cycle-based month navigation [critical]
-- Expenses View — Category-first vs merchant-first sort toggle [medium]
-- Expenses View — Empty state when no expenses exist [medium]
+Expense Filtering & Navigation (1 journey + 2 edge cases, e2e):
+- Expenses Filtering — Create 3 expenses (variable, fixed, commitment) → switch tabs → filter by category → change month → verify filters persist [high]
+  Edge: Navigate to month with no expenses → "No expenses" message, no broken UI [medium]
+  Edge: Rapid tab switching → no stale data, no console errors [low]
 
-Access Control (2 tests, integration):
-- Expenses Access — Regular user cannot see other users' expenses (RLS) [critical]
-- Expenses Access — Read-only user cannot create expenses [high]
+Access Control (1 journey, e2e):
+- Expenses Access Control — Owner creates expense → switch to viewer → viewer sees but can't edit → viewer attempts create → blocked [critical]
+
+Smoke (2 tests):
+- Expenses Smoke — Page loads with zero console errors [critical]
+- Expenses Smoke — Navigation from dashboard to expenses via sidebar [high]
 ```
 
 Return this strategy to the orchestrator for confirmation before writing tests. If you are writing tests directly (not via orchestrator), present the strategy in your output before proceeding.

@@ -55,6 +55,8 @@ For each suite, dispatch a **qa-runner** agent with:
 - Suite ID
 - List of ready test case IDs
 - App URL / environment info
+- Model: Haiku (hardcoded in agent definition — do NOT override)
+- Budget limits: 100 tool calls/block (hard limit), 3 approaches/failed action
 
 If multiple suites are being run, dispatch runners sequentially (one suite at a time) to avoid concurrent browser session issues.
 

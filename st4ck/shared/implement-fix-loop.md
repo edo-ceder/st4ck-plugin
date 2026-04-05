@@ -20,6 +20,7 @@ For each confirmed failure from the QA Runner:
    - code_bug → dispatch Code Agent to fix
    - test_bug → dispatch QA Author to fix
    - environment → STOP, report to human (can't fix environment issues)
+   - exceeded_block_budget / same_action_exhausted → SKIP, report to human (agent hit automation budget — not a code or test bug, needs manual investigation or test simplification)
 
 2. Track attempts per issue:
    attempts[issue_id] = { count: N, classification: "code_bug"|"test_bug", reclassified: false }
@@ -94,6 +95,7 @@ The fix loop STOPS when ANY of these are true:
 3. **Total iterations hit GLOBAL_CAP (8)** → stop ALL, report everything
 4. **Both classifications failed for an issue** (reclassification exhausted) → stop for that issue
 5. **Environment issue diagnosed** → stop immediately, report to human
+6. **Budget exceeded** (`exceeded_block_budget`, `same_action_exhausted`) → skip the issue, continue with other failures
 
 ## Reporting to Human
 

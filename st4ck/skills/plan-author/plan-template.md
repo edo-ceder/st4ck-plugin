@@ -58,17 +58,6 @@
 **Unit tests**:
 - [What pure functions / utilities to test]
 
-**QA test outline**:
-- [E2E scenario 1: what to verify from user perspective]
-- [E2E scenario 2: edge case to cover]
-
-**Negative tests**:
-- [What should NOT happen: crashes, console errors, blank screens]
-- [Page loads without console errors or white screen]
-
-**Boundary tests**:
-- [Date/timezone edge cases, empty data, rapid interactions]
-
 **Migration** (if applicable):
 ```sql
 -- Migration: YYYYMMDDHHMMSS_description.sql
@@ -83,14 +72,36 @@
 
 ---
 
-## Test Strategy Summary
+## Test Journeys (CRITICAL — QA Author Implements This Table)
 
-| Requirement | Unit Tests (Code Agent) | E2E Tests (QA Author) | Negative / Boundary Tests |
-|-------------|------------------------|----------------------|--------------------------|
-| R1 | [utility functions] | [user flow verification] | [crash/error scenarios] |
-| R2 | [data transformation] | [edge case + error state] | [timezone/empty data] |
+E2E tests are **journeys**: complete user flows from login through verification. Individual operations (create, edit, delete) are steps within a journey, NOT separate e2e tests. Smoke tests CAN be individual checks.
 
-## Framework Gotchas
+**Every e2e journey creates its own data via the UI.** No journey may assume pre-existing data — it must pass on a clean environment with only login credentials. If the journey tests filtering, it starts by creating filterable data. If it tests deletion, it creates something to delete first. Always via UI, never SQL.
+
+The QA author receives this table as a **contract** — they implement every row marked Ready and cannot drop planned flows. They may add discovered edge cases but must cover everything here first.
+
+| ID | Journey | Flow | Type | Expected Result | Status |
+|----|---------|------|------|-----------------|--------|
+| T1 | [Journey Name] | [Create data via UI → action → verify → further action → verify] | e2e | [Specific expected outcome for each step] | Ready |
+| T1.1 | [Journey Name] | [Edge case within journey] | edge | [Specific expected result] | Ready |
+| T1.2 | [Journey Name] | [Ambiguous edge case] | edge | ⚠️ OPEN — [Question for user] | Open |
+| T2 | [Journey Name] | [Create required data via UI → exercise feature → verify] | e2e | [Expected outcome] | Ready |
+| T2.1 | [Journey Name] | [Permission boundary] | edge | [Expected result] | Ready |
+| S1 | Smoke | [Quick gate check — no data setup needed] | smoke | [Page loads, zero console errors] | Ready |
+
+**Column definitions:**
+- **ID**: `T[journey].[flow]` for e2e/edge, `S[n]` for smoke
+- **Journey**: Named journey. Edge cases share their parent journey name.
+- **Flow**: The specific path being tested. E2E rows describe the full flow. Edge rows describe the variation.
+- **Type**: `e2e` (happy-path journey), `edge` (variation within a journey), `smoke`, `integration`
+- **Expected Result**: Specific, verifiable. Exact text, counts, state changes.
+- **Status**: `Ready` (approved for authoring) or `⚠️ OPEN — [question]` (blocks plan approval)
+
+### Negative Tests (per journey)
+- [What must NOT happen: console errors, white screens, data leakage, silent failures]
+- [Every new page/route: "loads without console errors or white screen"]
+
+### Framework Gotchas
 
 | Stack Component | Known Pitfall | Test / Mitigation |
 |----------------|--------------|-------------------|
@@ -99,8 +110,18 @@
 
 ---
 
-## Risks & Open Questions
+## ⚠️ Open Questions
 
-| # | Risk / Question | Impact | Mitigation / Answer Needed |
-|---|----------------|--------|---------------------------|
-| 1 | [risk or question] | [High/Med/Low] | [how to handle or who to ask] |
+**The plan CANNOT be approved while any question remains unanswered.**
+
+| # | Question | Context | Impact | Answer |
+|---|----------|---------|--------|--------|
+| 1 | [Edge case behavior question from Test Journeys table] | [Which flow this affects: T1.2] | [What happens if we guess wrong] | [User fills this in] |
+
+---
+
+## Risks
+
+| # | Risk | Impact | Mitigation |
+|---|------|--------|------------|
+| 1 | [risk] | [High/Med/Low] | [how to handle] |
