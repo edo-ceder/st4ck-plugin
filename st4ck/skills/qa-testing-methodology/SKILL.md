@@ -251,7 +251,7 @@ Mark a block `critical: true` when subsequent blocks depend on its success. Setu
 
 ### Block Size Limit
 
-**Maximum 7 actions per block.** If a sequence needs more, split at natural boundaries: setup, core action, verification, cleanup.
+**Maximum 15 actions per block.** If a sequence needs more, split at natural boundaries: setup, core action, verification, cleanup.
 
 ### Multi-User Scenarios
 
@@ -441,7 +441,7 @@ Before starting the checklist, you MUST read all source code files referenced or
 
 4. **ENUM/STEP VALUES** — Values match source code definitions (read the code, not documentation).
 
-5. **BLOCK STRUCTURE** — Max 7 actions per block. `profile_id` on every frontend block. Critical flags correct. Backend blocks READ-ONLY (SELECT only). Dynamic subquery lookups (no hardcoded UUIDs).
+5. **BLOCK STRUCTURE** — Max 15 actions per block. `profile_id` on every frontend block. Critical flags correct. Backend blocks READ-ONLY (SELECT only). Dynamic subquery lookups (no hardcoded UUIDs).
 
 6. **FEATURE EXISTS** — Route handlers, tables, columns all exist. Feature is live, not behind disabled flag.
 

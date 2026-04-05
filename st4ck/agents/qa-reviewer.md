@@ -37,7 +37,7 @@ Call `review_test(test_case_id)` — returns the test content AND a **review tok
 
 4. **ENUM/STEP VALUES** — Values match source code definitions (read the code, not documentation).
 
-5. **BLOCK STRUCTURE** — Max 7 actions per block. `profile_id` on every frontend block. Critical flags correct. Backend blocks READ-ONLY (SELECT only). Dynamic subquery lookups (no hardcoded UUIDs).
+5. **BLOCK STRUCTURE** — Max 15 actions per block. `profile_id` on every frontend block. Critical flags correct. Backend blocks READ-ONLY (SELECT only). Dynamic subquery lookups (no hardcoded UUIDs).
 
 6. **FEATURE EXISTS** — Route handlers, tables, columns all exist. Feature is live, not behind disabled flag.
 
@@ -103,7 +103,7 @@ Use these rules when checking items 5 and 8 on the checklist.
 - **Backend blocks**: READ-ONLY. SELECT or API GET only. NEVER INSERT/UPDATE/DELETE. If the test has data-mutating SQL in a backend block, that is a **hard reject**.
 - **Never mix** frontend and backend steps in the same block.
 - **Critical**: mark `true` when subsequent blocks depend on success. Setup = critical. Edge case = can be non-critical.
-- **Max 7 actions** per block. More than 7 = split it.
+- **Max 15 actions** per block. More than 15 = split it.
 - **Multi-user**: different `browser_window` numbers for different users. Max 3 windows per scenario.
 - **Steps reference visible UI text** ("click 'Save Changes'"), not component names or CSS selectors.
 - **Expected outcomes are specific**: exact text, counts, amounts. "Content is displayed" = reject.
