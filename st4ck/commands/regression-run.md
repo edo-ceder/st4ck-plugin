@@ -51,18 +51,25 @@ For each resolved suite:
 
 ## Execute
 
-For each suite, dispatch a **qa-runner** agent with:
-- Suite ID
-- List of ready test case IDs
-- App URL / environment info
-- Model: Haiku (hardcoded in agent definition — do NOT override)
-- Budget limits: 100 tool calls/block (hard limit), 3 approaches/failed action
+For each test in the suite, run the **deterministic runner** (zero LLM cost):
 
-If multiple suites are being run, dispatch runners sequentially (one suite at a time) to avoid concurrent browser session issues.
+```bash
+ST4CK_TOKEN="$TOKEN" node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
+  <test_case_id> <base_url> --session "st4ck-reg-$(date +%s)"
+```
 
-After each runner returns:
-1. Write summary to a results file (`.st4ck/regression-results-[date].json`)
-2. Discard raw runner output from context
+### Execution flow per test:
+1. Run `run-test.js` — handles deterministic blocks + profile locking internally
+2. Handle exit codes:
+   - **0**: Test passed — record result, continue to next test
+   - **1**: Test failed — record failure with evidence, continue to next test
+   - **42**: Agentic pause — handle the agentic block yourself (SQL, API call, etc.), save result via `save_execution_log`, restart with `--continue --from-block <next>`, repeat until 0 or 1
+
+### Suite-level rules:
+- Run tests within a suite **sequentially** (one browser session at a time)
+- If multiple suites, run suites sequentially
+- After each suite completes, write summary to `.st4ck/regression-results-[date].json`
+- Discard raw runner output from context (the state file summary is sufficient)
 
 ---
 

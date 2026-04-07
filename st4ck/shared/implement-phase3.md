@@ -124,16 +124,17 @@ Launch in parallel with Track A:
 
    The qa-author has the full methodology preloaded via its skill. It starts at step 3 (deep dive). Pass the Phase 1 exploration results so it doesn't re-explore.
 
-3. When the agent returns, validate:
+2. When the agent returns, validate:
    - Suite ID created?
    - Test case IDs listed?
    - **Journey coverage**: every row in the Test Journeys table (Status=Ready) has a corresponding test case?
    - **Edge cases**: all edge rows from the plan are covered?
    - Any additional edge cases the author discovered beyond the plan?
+   - **Component existence**: call `get_components()` and verify every component referenced by `{component, method}` actions in the authored tests exists. Missing components = coverage gap.
 
-4. If coverage gaps exist (planned flows not implemented), dispatch qa-author again with the specific missing rows.
+3. If coverage gaps exist (planned flows not implemented, or referenced components missing), dispatch qa-author again with the specific missing rows or components.
 
-5. Update state file:
+4. Update state file:
    ```json
    "suiteIds": ["[suite-id]"],
    "testCaseIds": ["[id1]", "[id2]", ...],
@@ -159,7 +160,7 @@ After QA Author completes:
 
 ## Convergence: Smoke Gate + QA Execution
 
-### Step 3e-pre: Smoke Gate
+### Step 3e: Smoke Gate
 
 After Track A completes but BEFORE dispatching QA Runner, run a quick smoke check to catch crashes and silent errors early. This saves full fix loop iterations.
 
@@ -182,7 +183,7 @@ After Track A completes but BEFORE dispatching QA Runner, run a quick smoke chec
 
 **Rationale**: TDZ crashes, missing imports, and query errors produce white screens or 406 errors that are trivially detectable before running the full test suite. Catching them here avoids wasting QA execution time.
 
-### Step 3e: QA Runner
+### Step 3f: QA Runner
 
 After smoke gate passes AND Track B completes:
 
@@ -197,14 +198,14 @@ After smoke gate passes AND Track B completes:
    - **All green** → proceed to Phase 4
    - **Flaky tests** → note in report, no fix loop
    - **Budget exceeded** (`exceeded_block_budget`, `same_action_exhausted`) → report to human, do NOT enter fix loop (these are agent automation limits, not code/test bugs)
-   - **Confirmed failures** → enter fix loop (Step 3f)
+   - **Confirmed failures** → enter fix loop (Step 3g)
 
 3. Update state file:
    ```json
    "agentResults.qaRunner": { "passed": N, "failed": N, "flaky": N, "failures": [...] }
    ```
 
-### Step 3f: Fix Loop
+### Step 3g: Fix Loop
 
 If there are confirmed failures, include the fix loop logic:
 

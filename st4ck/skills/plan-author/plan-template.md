@@ -80,14 +80,14 @@ E2E tests are **journeys**: complete user flows from login through verification.
 
 The QA author receives this table as a **contract** — they implement every row marked Ready and cannot drop planned flows. They may add discovered edge cases but must cover everything here first.
 
-| ID | Journey | Flow | Type | Expected Result | Status |
-|----|---------|------|------|-----------------|--------|
-| T1 | [Journey Name] | [Create data via UI → action → verify → further action → verify] | e2e | [Specific expected outcome for each step] | Ready |
-| T1.1 | [Journey Name] | [Edge case within journey] | edge | [Specific expected result] | Ready |
-| T1.2 | [Journey Name] | [Ambiguous edge case] | edge | ⚠️ OPEN — [Question for user] | Open |
-| T2 | [Journey Name] | [Create required data via UI → exercise feature → verify] | e2e | [Expected outcome] | Ready |
-| T2.1 | [Journey Name] | [Permission boundary] | edge | [Expected result] | Ready |
-| S1 | Smoke | [Quick gate check — no data setup needed] | smoke | [Page loads, zero console errors] | Ready |
+| ID | Journey | Flow | Type | Components | Expected Result | Status |
+|----|---------|------|------|------------|-----------------|--------|
+| T1 | [Journey Name] | [Create data via UI → action → verify → further action → verify] | e2e | login.default, expense.create, expense.verify | [Specific expected outcome for each step] | Ready |
+| T1.1 | [Journey Name] | [Edge case within journey] | edge | expense.create (special chars) | [Specific expected result] | Ready |
+| T1.2 | [Journey Name] | [Ambiguous edge case] | edge | | ⚠️ OPEN — [Question for user] | Open |
+| T2 | [Journey Name] | [Create required data via UI → exercise feature → verify] | e2e | login.default, navigation.sidebar_click | [Expected outcome] | Ready |
+| T2.1 | [Journey Name] | [Permission boundary] | edge | login.default (viewer role) | [Expected result] | Ready |
+| S1 | Smoke | [Quick gate check — no data setup needed] | smoke | navigation.sidebar_click | [Page loads, zero console errors] | Ready |
 
 **Column definitions:**
 - **ID**: `T[journey].[flow]` for e2e/edge, `S[n]` for smoke
@@ -96,6 +96,16 @@ The QA author receives this table as a **contract** — they implement every row
 - **Type**: `e2e` (happy-path journey), `edge` (variation within a journey), `smoke`, `integration`
 - **Expected Result**: Specific, verifiable. Exact text, counts, state changes.
 - **Status**: `Ready` (approved for authoring) or `⚠️ OPEN — [question]` (blocks plan approval)
+
+### Test Components to Create/Update
+
+Components are reusable eval sequences for the deterministic runner. The QA author creates components before writing tests, then composes tests from `{component, method, params}` calls.
+
+| Component | Method | Status | Notes |
+|-----------|--------|--------|-------|
+| login | default | Exists | Standard email+password login |
+| [name] | [method] | New | [What it does, which UI it targets] |
+| [name] | [method] | Update needed | [What changed — selector moved, flow changed] |
 
 ### Negative Tests (per journey)
 - [What must NOT happen: console errors, white screens, data leakage, silent failures]

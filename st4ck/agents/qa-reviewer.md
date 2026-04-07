@@ -37,7 +37,7 @@ Call `review_test(test_case_id)` — returns the test content AND a **review tok
 
 4. **ENUM/STEP VALUES** — Values match source code definitions (read the code, not documentation).
 
-5. **BLOCK STRUCTURE** — Max 15 actions per block. `profile_id` on every frontend block. Critical flags correct. Backend blocks READ-ONLY (SELECT only). Dynamic subquery lookups (no hardcoded UUIDs).
+5. **BLOCK STRUCTURE** — Max 15 actions per block. `profile_id` (legacy) or `role` (component format) on every frontend block. Critical flags correct. Backend blocks READ-ONLY (SELECT only). Dynamic subquery lookups (no hardcoded UUIDs).
 
 6. **FEATURE EXISTS** — Route handlers, tables, columns all exist. Feature is live, not behind disabled flag.
 
@@ -78,11 +78,45 @@ Call `sign_test_review(test_case_id, review_token, attestation)` with:
 **If the test fails any check:**
 Report the specific failure(s) to the orchestrator. Do NOT sign a test you have concerns about.
 
+## Hybrid Review: Component + Journey
+
+Tests may use two action formats — review both:
+
+### Component-Format Actions (deterministic)
+```json
+{ "component": "login", "method": "default", "params": { "role": "admin" } }
+```
+**Component checklist** (6 items):
+1. Eval targets real elements (grep for selectors in source code)
+2. Verify checks correct state (post_verify assertions match expected behavior)
+3. Params schema correct (required params match component's `params_schema`)
+4. Waits sufficient (wait_before/wait_after account for async operations)
+5. Edge cases handled (what if element not found? timeout?)
+6. No hardcoded values (all variable data passed via params, not in eval_sequence)
+7. `entry_url` set on blocks that could be `--continue` re-entry points (any frontend block after block 0)
+
+For each referenced component, call `get_component(name, method)` and review the eval_sequence.
+
+### Legacy Agentic Actions
+```json
+{ "action": "Click the 'Save' button", "expected": "Success message appears" }
+```
+Reviewed using the existing 12-item checklist below.
+
+### Seal Rules
+- Component `eval_sequence` change → component `review_signature` breaks → component needs re-review
+- Block/flow change → journey `journey_signature` breaks → test needs re-review
+- Param-only change (different values, same component) → light review only (component seal intact)
+
+### Profile Handling
+- Component-format blocks use `role` instead of `profile_id` (resolved at runtime via `acquire_profile`)
+- Legacy blocks still require `profile_id`
+
 ## Block Format Rules (Reference for Validation)
 
 Use these rules when checking items 5 and 8 on the checklist.
 
-### Block Structure
+### Block Structure (Legacy)
 ```json
 {
   "block": 1,
@@ -98,8 +132,24 @@ Use these rules when checking items 5 and 8 on the checklist.
 }
 ```
 
+### Block Structure (Component Format)
+```json
+{
+  "block": 1,
+  "block_type": "frontend",
+  "run_type": "serial",
+  "role": "admin",
+  "critical": true,
+  "actions": [
+    { "component": "login", "method": "default", "params": { "role": "admin" } },
+    { "component": "expense", "method": "create", "params": { "name": "Test", "amount": "100" } }
+  ],
+  "expected_outcome": "User logged in and expense created"
+}
+```
+
 ### Rules
-- **Frontend blocks**: browser/UI steps. MUST have `profile_id`. Without it, credentials resolve to null and the block fails silently.
+- **Frontend blocks**: browser/UI steps. MUST have `profile_id` (legacy) or `role` (component format). Without credentials, the block fails silently.
 - **Backend blocks**: READ-ONLY. SELECT or API GET only. NEVER INSERT/UPDATE/DELETE. If the test has data-mutating SQL in a backend block, that is a **hard reject**.
 - **Never mix** frontend and backend steps in the same block.
 - **Critical**: mark `true` when subsequent blocks depend on success. Setup = critical. Edge case = can be non-critical.

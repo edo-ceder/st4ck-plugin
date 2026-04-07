@@ -198,7 +198,7 @@ Return this strategy to the orchestrator for confirmation before writing tests. 
 
 ### Step 5: Prepare for Execution
 
-1. **Test profiles**: Use the profile IDs from your dispatch prompt. If not provided, call `get_test_profiles` for real profile UUIDs. If NO profiles exist, create them with `create_test_profile` — you need at least one profile per user role the tests will exercise. NEVER skip tests or declare "blocked" because profiles don't exist. Every frontend block needs a `profile_id`.
+1. **Test profiles**: Use the profile IDs from your dispatch prompt. If not provided, call `get_test_profiles` for real profile UUIDs. If NO profiles exist, create them with `create_test_profile` — you need at least one profile per user role the tests will exercise. NEVER skip tests or declare "blocked" because profiles don't exist. Component-format blocks use `role` (resolved at runtime via `acquire_profile`). Legacy blocks use `profile_id`.
 2. **Suite**: Use the suite ID from your dispatch prompt. If not provided, call `create_test_suite` with the agreed name, category, and module.
 3. **Methodology key**: Call `get_qa_methodology()` to obtain the `methodology_key` required by `create_test_case`.
 
@@ -222,10 +222,29 @@ Every rule here is a hard constraint.
 
 ### Scenario Block Structure
 
+**Component-format** (deterministic runner):
 ```json
 {
   "block": 1,
-  "block_type": "frontend | backend",
+  "block_type": "frontend",
+  "run_type": "serial",
+  "browser_window": 1,
+  "role": "admin",
+  "entry_url": "/dashboard",
+  "critical": true,
+  "actions": [
+    { "component": "login", "method": "default", "params": { "role": "admin" } },
+    { "component": "navigation", "method": "goto", "params": { "target": "settings" } }
+  ],
+  "expected_outcome": "summary of block outcome"
+}
+```
+
+**Legacy format** (agentic execution):
+```json
+{
+  "block": 1,
+  "block_type": "frontend",
   "run_type": "serial",
   "browser_window": 1,
   "profile_id": "uuid",
@@ -239,7 +258,7 @@ Every rule here is a hard constraint.
 
 ### Block Types
 
-**Frontend blocks** — browser/UI steps. Actions describe what the user does: click, type, verify text. MUST have `profile_id` set. Without it, credentials resolve to null and the block fails silently.
+**Frontend blocks** — browser/UI steps. Actions describe what the user does: click, type, verify text. Component-format blocks MUST have `role` set (resolved at runtime via `acquire_profile`). Legacy blocks MUST have `profile_id` set. Without credentials, the block fails silently.
 
 **Backend blocks** — READ-ONLY verification. SELECT queries or API GET checks ONLY. NEVER INSERT, UPDATE, DELETE, or any data-mutating SQL. If you need data, create it through the UI in a frontend block.
 
@@ -441,7 +460,7 @@ Before starting the checklist, you MUST read all source code files referenced or
 
 4. **ENUM/STEP VALUES** — Values match source code definitions (read the code, not documentation).
 
-5. **BLOCK STRUCTURE** — Max 15 actions per block. `profile_id` on every frontend block. Critical flags correct. Backend blocks READ-ONLY (SELECT only). Dynamic subquery lookups (no hardcoded UUIDs).
+5. **BLOCK STRUCTURE** — Max 15 actions per block. `role` (component-format) or `profile_id` (legacy) on every frontend block. Critical flags correct. Backend blocks READ-ONLY (SELECT only). Dynamic subquery lookups (no hardcoded UUIDs). `entry_url` set on blocks that could be `--continue` re-entry points.
 
 6. **FEATURE EXISTS** — Route handlers, tables, columns all exist. Feature is live, not behind disabled flag.
 
@@ -511,7 +530,7 @@ Before calling `create_test_case`, confirm:
 
 1. `methodology_key` — from `get_qa_methodology()`. Required. Expires after 2 hours.
 2. `suite_id` — from `get_test_suites` or `create_test_suite`
-3. `profile_id(s)` — from `get_test_profiles`, one for every frontend block
+3. `role` (component-format) or `profile_id` (legacy) — from `get_test_profiles`, one for every frontend block
 4. Research artifact completed — all values verified against source code
 5. `methodology_attestation` filled out — 6 questions, each with "yes"/"no" AND detailed explanation (30+ chars):
    - `is_self_contained`: Can this test run on a clean environment with nothing except login credentials?

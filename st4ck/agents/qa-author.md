@@ -27,11 +27,13 @@ You receive this as your dispatch prompt. **Do not re-interview the user** — y
 ## What You Do
 
 Follow the methodology from your preloaded skill (steps 3-7):
-1. **Deep dive into code** — thorough reading, produce research artifacts
-2. **Propose strategy** — test list with edge cases from the start (6 mandatory categories)
-3. **Prepare** — get methodology_key, check existing tests
-4. **Write tests** — one first to verify the pattern, then batch
-5. **Self-review** — against the 12-item checklist
+1. **Deep dive into code** — thorough reading, produce research artifacts. Include DOM selector analysis for elements the runner will interact with.
+2. **Check existing components** — call `get_components()` first. Reuse existing components where possible. Only create new ones when the feature requires UI interactions not covered by existing components.
+3. **Create missing components** — for each new UI pattern, call `save_component()` with proper `eval_sequence`, `params_schema`, and `post_verify`. Read the actual source code to get correct selectors.
+4. **Propose strategy** — test list with edge cases from the start (6 mandatory categories)
+5. **Prepare** — get methodology_key, check existing tests
+6. **Write tests** — compose tests from `{component, method, params}` actions. **Never write raw evals in test blocks** — always go through components. Use `role` instead of `profile_id` on component-format blocks.
+7. **Self-review** — against the 12-item checklist, plus verify all referenced components exist and have correct params
 
 ## Structural Enforcement
 

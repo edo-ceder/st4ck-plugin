@@ -122,6 +122,20 @@ When the expected result for an edge case is ambiguous — you don't know if the
 
 This prevents the QA author from silently guessing edge case behaviors.
 
+#### Test Components (for Deterministic Runner)
+
+When building features, identify which **test components** (reusable eval sequences) exist and which need creation. This enables the deterministic runner to execute tests with zero LLM cost.
+
+1. Call `get_components()` to see existing components for the project
+2. For each test journey, identify which component methods are needed (e.g., `login.default`, `expense.create`, `navigation.sidebar_click`)
+3. Add a "Components" column to the Test Journeys table showing which components each journey uses
+4. Create a **Test Components to Create/Update** section listing:
+   - New components needed (name, method, what they do)
+   - Existing components that may need updates (because the feature changed UI they target)
+   - Components at risk of breaking (because selectors/behavior changed)
+
+This section is essential for the QA author — they will create components before writing tests, and compose tests from component calls instead of raw evals.
+
 #### Negative Tests (per journey)
 Explicitly list what must NOT happen:
 - No console errors or white screens on any new route
