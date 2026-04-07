@@ -78,16 +78,49 @@ function parseArgs() {
   opts.baseUrl = positional[1] || '';
   opts.token = process.env.ST4CK_TOKEN || positional[2] || '';
 
+  // Fallback: read bearer token from project .mcp.json if ST4CK_TOKEN not set
+  if (!opts.token) {
+    opts.token = readTokenFromMcpJson();
+  }
+
   if (!opts.testCaseId) {
     console.error('Usage: node run-test.js <test_case_id> <base_url> [token] [--headless] [--continue <exec_id> --from-block <N>]');
     process.exit(1);
   }
   if (!opts.token) {
-    console.error('Error: No MCP token. Set ST4CK_TOKEN env var or pass as 3rd argument.');
+    console.error('Error: No MCP token. Set ST4CK_TOKEN env var, pass as 3rd argument, or ensure .mcp.json has st4ck-qa headers.Authorization.');
     process.exit(1);
   }
 
   return opts;
+}
+
+/** Try to read the bearer token from the project's .mcp.json file */
+function readTokenFromMcpJson() {
+  const fs = require('fs');
+  const path = require('path');
+  // Walk up from cwd looking for .mcp.json
+  let dir = process.cwd();
+  for (let i = 0; i < 10; i++) {
+    const candidate = path.join(dir, '.mcp.json');
+    try {
+      const raw = fs.readFileSync(candidate, 'utf8');
+      const config = JSON.parse(raw);
+      const servers = config.mcpServers || {};
+      // Prefer st4ck-qa, fall back to st4ck
+      for (const name of ['st4ck-qa', 'st4ck']) {
+        const auth = servers[name]?.headers?.Authorization || '';
+        if (auth.startsWith('Bearer ')) {
+          console.error(`[info] Token loaded from ${candidate} (server: ${name})`);
+          return auth.slice(7);
+        }
+      }
+    } catch { /* not found, try parent */ }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return '';
 }
 
 // ─── Node.js Version Check ──────────────────────────────────────────────────

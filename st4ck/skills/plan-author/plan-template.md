@@ -6,6 +6,24 @@
 
 ---
 
+## Context for Reviewers
+
+Independent reviewers (plan reviewers, code reviewers, QA authors) read this section to understand what they're evaluating. Write it for someone who has never seen this codebase.
+
+### What the app does
+[1-3 sentences: what this software is, who uses it, what it does for them.]
+
+### Current state
+[What exists today that this plan changes. What works, what's missing, what's broken.]
+
+### Desired end state
+[What the world looks like after this plan is implemented. Be specific — not "better UX" but "users can X where today they have to Y."]
+
+### Why this plan exists
+[The problem or opportunity. What triggered this work — a bug, a feature request, a compliance requirement, a scalability limit.]
+
+---
+
 ## Requirements
 
 | ID | Requirement | Source | Acceptance Criteria |
@@ -94,6 +112,7 @@ The QA author receives this table as a **contract** — they implement every row
 - **Journey**: Named journey. Edge cases share their parent journey name.
 - **Flow**: The specific path being tested. E2E rows describe the full flow. Edge rows describe the variation.
 - **Type**: `e2e` (happy-path journey), `edge` (variation within a journey), `smoke`, `integration`
+- **Components**: Which test components this journey uses (helps QA author identify what to create)
 - **Expected Result**: Specific, verifiable. Exact text, counts, state changes.
 - **Status**: `Ready` (approved for authoring) or `⚠️ OPEN — [question]` (blocks plan approval)
 
