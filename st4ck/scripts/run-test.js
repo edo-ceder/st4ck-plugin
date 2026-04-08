@@ -286,6 +286,10 @@ async function abNavigate(session, url, opts = {}) {
   return abExec(session, ['navigate', url], opts);
 }
 
+async function abClose(session) {
+  return abExec(session, ['close']);
+}
+
 async function abSnapshot(session) {
   return abExec(session, ['snapshot', '-i']);
 }
@@ -673,13 +677,15 @@ async function main() {
   // On normal exit, clean up fixture temp files (profiles released explicitly before each exit point)
   process.on('exit', () => { cleanupFixtures(opts.testCaseId); });
   process.on('SIGTERM', () => {
-    // Best-effort profile release (async, may not complete before exit)
+    // Best-effort cleanup (async, may not complete before exit)
     releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles).catch(() => {});
+    abClose(opts.session).catch(() => {});
     cleanupFixtures(opts.testCaseId);
     process.exit(1);
   });
   process.on('SIGINT', () => {
     releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles).catch(() => {});
+    abClose(opts.session).catch(() => {});
     cleanupFixtures(opts.testCaseId);
     process.exit(1);
   });
@@ -793,6 +799,7 @@ async function main() {
         };
         console.log(JSON.stringify(pauseInfo));
         await releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles);
+        await abClose(opts.session).catch(() => {});
         process.exit(42);
       }
 
@@ -814,6 +821,7 @@ async function main() {
         const logPath = `${LOG_FILE_PREFIX}${Date.now()}.json`;
         fs.writeFileSync(logPath, JSON.stringify(log, null, 2));
         console.error(`[FAIL] Block ${bi} failed. Log: ${logPath}`);
+        await abClose(opts.session).catch(() => {});
         process.exit(1);
       }
     }
@@ -837,6 +845,7 @@ async function main() {
 
     // Release all acquired profiles
     await releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles);
+    await abClose(opts.session).catch(() => {});
 
     process.exit(0);
 
@@ -845,8 +854,9 @@ async function main() {
     log.error = err.message;
     log.finished_at = new Date().toISOString();
 
-    // Release profiles before exit
+    // Release profiles and close browser before exit
     try { await releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles); } catch { /* best effort */ }
+    try { await abClose(opts.session); } catch { /* best effort */ }
 
     // Try to save error log
     try {
