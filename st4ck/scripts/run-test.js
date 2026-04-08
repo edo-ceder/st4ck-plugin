@@ -424,32 +424,223 @@ async function resolveAction(mcpUrl, token, action) {
   return { steps: result.steps || result.data?.steps || [], agentic: false };
 }
 
-async function executeEvalStep(session, step, headless) {
-  // Step can be: { eval: "code" } or { navigate: "url" } or { type: "text", selector: "sel" } etc.
+// ─── Step Execution Engine ──────────────────────────────────────────────────
+//
+// Supports all agent-browser commands as step types. Each step is an object
+// with a type-specific key. Steps in component eval_sequence use these types.
+//
+// Simple steps:      { eval, navigate, click, fill, type+selector, press, hover,
+//                      focus, check, uncheck, select, scroll, screenshot, wait,
+//                      wait_fn, get, is, find, command }
+// Snapshot:          { type: "snapshot" } — takes accessibility snapshot, stores
+//                      result for branch conditions
+// Branch:            { type: "branch", condition, then } — evaluates condition
+//                      against last snapshot or params, executes `then` steps if match
+// Conditional skip:  Any step with { condition } — skipped if condition is false
+
+// Shared state: last snapshot text, available to branch conditions
+let _lastSnapshot = '';
+
+function evaluateCondition(condition, params) {
+  if (!condition) return true;
+  // "sidebar contains 'X'" / "contains 'X'" — match against last snapshot
+  const containsMatch = condition.match(/contains\s+'([^']+)'/);
+  if (containsMatch) return _lastSnapshot.includes(containsMatch[1]);
+  // "param === value" — match against component params
+  const paramMatch = condition.match(/^(\w+)\s*===?\s*(.+)$/);
+  if (paramMatch) {
+    const [, key, rawVal] = paramMatch;
+    const val = rawVal.trim();
+    const paramVal = params?.[key];
+    if (val === 'true') return paramVal === true;
+    if (val === 'false') return paramVal === false || !paramVal;
+    return String(paramVal) === val;
+  }
+  return false;
+}
+
+async function executeEvalStep(session, step, headless, params) {
+  // Conditional skip — any step with a `condition` field
+  if (step.condition && !evaluateCondition(step.condition, params)) {
+    return { stdout: 'skipped (condition false)', stderr: '', ok: true };
+  }
+
+  const opts = { headed: !headless };
+
+  // ── Snapshot ──
+  if (step.type === 'snapshot') {
+    const flags = step.interactive !== false ? ['-i'] : [];
+    if (step.selector) flags.push('-s', step.selector);
+    if (step.compact) flags.push('-c');
+    const result = await abExec(session, ['snapshot', ...flags], opts);
+    if (result.ok) _lastSnapshot = result.stdout;
+    return result;
+  }
+
+  // ── Branch (state-machine pattern) ──
+  if (step.type === 'branch') {
+    if (!evaluateCondition(step.condition, params)) {
+      return { stdout: 'branch skipped', stderr: '', ok: true };
+    }
+    // "DONE" string means success — no sub-steps to execute
+    if (typeof step.then === 'string') {
+      return { stdout: step.then, stderr: '', ok: true };
+    }
+    // Execute sub-steps sequentially
+    for (const subStep of step.then) {
+      const result = await executeEvalStep(session, subStep, headless, params);
+      if (!result.ok) return result;
+    }
+    return { stdout: 'branch completed', stderr: '', ok: true };
+  }
+
+  // ── Eval (JS execution via stdin) ──
   if (step.eval) {
-    return abEval(session, step.eval, { headed: !headless });
+    return abEval(session, step.eval, opts);
   }
+
+  // ── Navigate ──
   if (step.navigate) {
-    return abNavigate(session, step.navigate, { headed: !headless });
+    return abNavigate(session, step.navigate, opts);
   }
+
+  // ── Click (supports @ref and CSS selectors) ──
   if (step.click) {
-    return abExec(session, ['click', step.click], { headed: !headless });
+    return abExec(session, ['click', step.click], opts);
   }
+  if (step.ref && (step.type === 'click' || !step.type)) {
+    return abExec(session, ['click', `@${step.ref}`], opts);
+  }
+  if (step.type === 'dblclick' && (step.ref || step.selector)) {
+    return abExec(session, ['dblclick', step.ref ? `@${step.ref}` : step.selector], opts);
+  }
+
+  // ── Fill (clear + type) ──
+  if (step.fill !== undefined && (step.ref || step.selector)) {
+    const target = step.ref ? `@${step.ref}` : step.selector;
+    return abExec(session, ['fill', target, step.fill], opts);
+  }
+
+  // ── Type (keystroke into element) ──
   if (step.type && step.selector) {
-    return abExec(session, ['type', step.selector, step.type], { headed: !headless });
+    return abExec(session, ['type', step.selector, step.type], opts);
+  }
+  if (step.type === 'type' && step.ref && step.text) {
+    return abExec(session, ['type', `@${step.ref}`, step.text], opts);
+  }
+
+  // ── Press key ──
+  if (step.press) {
+    return abExec(session, ['press', step.press], opts);
+  }
+
+  // ── Hover ──
+  if (step.hover) {
+    return abExec(session, ['hover', step.hover], opts);
+  }
+
+  // ── Focus ──
+  if (step.focus) {
+    return abExec(session, ['focus', step.focus], opts);
+  }
+
+  // ── Check / Uncheck ──
+  if (step.check) {
+    return abExec(session, ['check', step.check], opts);
+  }
+  if (step.uncheck) {
+    return abExec(session, ['uncheck', step.uncheck], opts);
+  }
+
+  // ── Select (dropdown) ──
+  if (step.select && step.value) {
+    const values = Array.isArray(step.value) ? step.value : [step.value];
+    return abExec(session, ['select', step.select, ...values], opts);
+  }
+
+  // ── Scroll ──
+  if (step.scroll) {
+    const args = ['scroll', step.scroll];
+    if (step.pixels) args.push(String(step.pixels));
+    return abExec(session, args, opts);
+  }
+  if (step.scrollintoview) {
+    return abExec(session, ['scrollintoview', step.scrollintoview], opts);
+  }
+
+  // ── Wait (element, ms, or --load) ──
+  if (step.wait) {
+    const args = ['wait'];
+    if (step.wait === 'networkidle' || step.wait === 'load') {
+      args.push('--load', step.wait);
+    } else {
+      args.push(String(step.wait));
+    }
+    return abExec(session, args, { ...opts, timeout: step.timeout || AB_TIMEOUT });
   }
   if (step.wait_fn) {
     return abExec(session, ['wait', '--fn', step.wait_fn], {
-      headed: !headless,
+      ...opts,
       timeout: step.timeout || AB_TIMEOUT,
     });
   }
-  // Generic command
+
+  // ── Screenshot ──
+  if (step.screenshot || step.type === 'screenshot') {
+    const args = ['screenshot'];
+    if (typeof step.screenshot === 'string') args.push(step.screenshot);
+    return abExec(session, args, opts);
+  }
+
+  // ── Get info (text, html, value, attr, title, url, count) ──
+  if (step.get) {
+    const args = ['get', step.get];
+    if (step.selector || step.ref) args.push(step.ref ? `@${step.ref}` : step.selector);
+    if (step.attr) args.push(step.attr);
+    return abExec(session, args, opts);
+  }
+
+  // ── Is check (visible, enabled, checked) ──
+  if (step.is) {
+    const target = step.ref ? `@${step.ref}` : step.selector;
+    return abExec(session, ['is', step.is, target], opts);
+  }
+
+  // ── Find (role, text, label, etc.) ──
+  if (step.find) {
+    const args = ['find', step.find.locator, step.find.value, step.find.action || 'click'];
+    if (step.find.text) args.push(step.find.text);
+    return abExec(session, args, opts);
+  }
+
+  // ── Upload ──
+  if (step.upload && step.files) {
+    const files = Array.isArray(step.files) ? step.files : [step.files];
+    return abExec(session, ['upload', step.upload, ...files], opts);
+  }
+
+  // ── Cookies ──
+  if (step.cookies) {
+    return abExec(session, ['cookies', step.cookies], opts);
+  }
+
+  // ── Keyboard ──
+  if (step.keyboard) {
+    return abExec(session, ['keyboard', step.keyboard.action, step.keyboard.text], opts);
+  }
+
+  // ── Reload / Back / Forward ──
+  if (step.reload) return abExec(session, ['reload'], opts);
+  if (step.back) return abExec(session, ['back'], opts);
+  if (step.forward) return abExec(session, ['forward'], opts);
+
+  // ── Generic command (escape hatch) ──
   if (step.command) {
     const parts = Array.isArray(step.command) ? step.command : step.command.split(' ');
-    return abExec(session, parts, { headed: !headless });
+    return abExec(session, parts, opts);
   }
-  return { stdout: '', stderr: 'Unknown step type', ok: false };
+
+  return { stdout: '', stderr: `Unknown step type: ${JSON.stringify(Object.keys(step))}`, ok: false };
 }
 
 async function pollVerify(session, verifyStep, headless) {
@@ -563,7 +754,7 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
           if (replaced !== stepStr) processedStep = JSON.parse(replaced);
         }
 
-        lastResult = await executeEvalStep(session, processedStep, headless);
+        lastResult = await executeEvalStep(session, processedStep, headless, action.params);
         if (!lastResult.ok) {
           // Eval returned error or 'nf' (not found)
           if (lastResult.stdout === 'nf' || lastResult.stderr) {
