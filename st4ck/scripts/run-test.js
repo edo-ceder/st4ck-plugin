@@ -515,6 +515,13 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
           processedStep = substituteProfileCredentials(processedStep, blockProfile);
         }
 
+        // Substitute {{base_url}} with the CLI-provided base URL
+        if (opts.baseUrl) {
+          const stepStr = JSON.stringify(processedStep);
+          const replaced = stepStr.replaceAll('{{base_url}}', opts.baseUrl.replace(/\/$/, ''));
+          if (replaced !== stepStr) processedStep = JSON.parse(replaced);
+        }
+
         lastResult = await executeEvalStep(session, processedStep, headless);
         if (!lastResult.ok) {
           // Eval returned error or 'nf' (not found)
