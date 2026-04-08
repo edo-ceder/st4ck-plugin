@@ -443,8 +443,8 @@ Lifecycle:
 1. `create_test_case` -> unreviewed
 2. Independent agent calls `review_test(test_case_id, methodology_key)` -> gets `review_token`
 3. Review agent evaluates checklist, calls `sign_test_review(test_case_id, review_token, review_attestation)`
-4. `trigger_test_run` -> server checks `review_signature` is not null -> allows execution
-5. `modify_test_case` (blocks changed) -> server clears signature -> must re-review
+4. `trigger_test_run` / `run-test.js` -> server checks `review_signature` (legacy) or `journey_signature` (component-format) is not null -> allows execution
+5. `modify_test_case` (blocks changed) -> server clears both signatures -> must re-review
 
 ### Prerequisite: Read Source Files First
 
