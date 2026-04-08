@@ -427,7 +427,7 @@ async function pollVerify(session, verifyStep, headless) {
   return { stdout: '', stderr: `Verify timed out after ${timeout}ms`, ok: false, verified: false };
 }
 
-async function executeBlock(session, block, blockIndex, mcpUrl, token, headless, log, fixturePaths, acquiredProfiles, environmentId) {
+async function executeBlock(session, block, blockIndex, mcpUrl, token, headless, log, fixturePaths, acquiredProfiles, environmentId, baseUrl) {
   const blockLog = {
     block: blockIndex,
     block_type: block.block_type || 'frontend',
@@ -516,9 +516,9 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
         }
 
         // Substitute {{base_url}} with the CLI-provided base URL
-        if (opts.baseUrl) {
+        if (baseUrl) {
           const stepStr = JSON.stringify(processedStep);
-          const replaced = stepStr.replaceAll('{{base_url}}', opts.baseUrl.replace(/\/$/, ''));
+          const replaced = stepStr.replaceAll('{{base_url}}', baseUrl.replace(/\/$/, ''));
           if (replaced !== stepStr) processedStep = JSON.parse(replaced);
         }
 
@@ -728,7 +728,7 @@ async function main() {
         opts.session, block, bi,
         opts.mcpUrl, opts.token,
         opts.headless, log, fixturePaths,
-        acquiredProfiles, environmentId
+        acquiredProfiles, environmentId, opts.baseUrl
       );
 
       if (result.agenticPause) {
