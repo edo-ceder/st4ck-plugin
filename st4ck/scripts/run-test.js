@@ -22,7 +22,7 @@
 
 'use strict';
 
-const { execFile: execFileCb } = require('node:child_process');
+const { execFile: execFileCb, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -219,11 +219,48 @@ async function abExec(session, command, opts = {}) {
   const cmdParts = Array.isArray(command) ? command : command.split(' ');
   args.push(...cmdParts);
 
+  // When stdin data is provided, use spawn + explicit stdin.write/end
+  // instead of execFile({ input }) which silently drops stdin on Node 22.
+  if (opts.stdin) {
+    const timeout = opts.timeout || AB_TIMEOUT;
+    return new Promise((resolve) => {
+      const child = spawn('agent-browser', args);
+
+      let stdout = '';
+      let stderr = '';
+      let killed = false;
+      child.stdout.on('data', (d) => { stdout += d; });
+      child.stderr.on('data', (d) => { stderr += d; });
+
+      const timer = setTimeout(() => {
+        killed = true;
+        child.kill('SIGTERM');
+      }, timeout);
+
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        if (killed) {
+          resolve({ stdout: stdout.trim(), stderr: `timed out after ${timeout}ms`, ok: false, code: 'ETIMEDOUT' });
+        } else if (code === 0) {
+          resolve({ stdout: stdout.trim(), stderr: stderr.trim(), ok: true });
+        } else {
+          resolve({ stdout: stdout.trim(), stderr: stderr.trim() || `exit code ${code}`, ok: false, code });
+        }
+      });
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        resolve({ stdout: '', stderr: err.message, ok: false, code: err.code });
+      });
+
+      child.stdin.write(opts.stdin);
+      child.stdin.end();
+    });
+  }
+
   try {
     const { stdout, stderr } = await execFile('agent-browser', args, {
       maxBuffer: MAX_BUFFER,
       timeout: opts.timeout || AB_TIMEOUT,
-      ...(opts.stdin ? { input: opts.stdin } : {}),
     });
     return { stdout: stdout.trim(), stderr: stderr.trim(), ok: true };
   } catch (err) {
