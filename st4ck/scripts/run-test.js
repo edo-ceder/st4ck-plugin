@@ -48,6 +48,7 @@ function parseArgs() {
     baseUrl: '',
     token: '',
     mcpUrl: process.env.ST4CK_MCP_URL || 'https://app.st4ck.io/mcp/v3/',
+    mcpDataUrl: process.env.ST4CK_MCP_DATA_URL || '', // Derived from mcpUrl if not set — V1 for data tools (bubble, supabase)
     headless: false,
     continueExecId: '',
     fromBlock: -1,
@@ -90,6 +91,11 @@ function parseArgs() {
   if (!opts.token) {
     console.error('Error: No MCP token. Set ST4CK_TOKEN env var, pass as 3rd argument, or ensure .mcp.json has st4ck-qa headers.Authorization.');
     process.exit(1);
+  }
+
+  // Derive V1 data URL from V3 QA URL: /mcp/v3/ → /mcp/
+  if (!opts.mcpDataUrl) {
+    opts.mcpDataUrl = opts.mcpUrl.replace(/\/mcp\/v3\/?$/, '/mcp/');
   }
 
   return opts;
@@ -356,19 +362,20 @@ function cleanupFixtures(testCaseId) {
  * Acquire a test user profile by role. Returns decrypted credentials.
  * Tracks acquired profiles for cleanup on exit.
  */
-async function acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles) {
-  // Check if we already acquired a profile for this role
-  if (acquiredProfiles.has(role)) return acquiredProfiles.get(role);
+async function acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles, profileName, cacheKey) {
+  const key = cacheKey || role;
+  // Check if we already acquired a profile for this key
+  if (acquiredProfiles.has(key)) return acquiredProfiles.get(key);
 
-  const result = await mcpCall(mcpUrl, token, 'acquire_profile', {
-    role,
-    environment_id: environmentId,
-  });
+  const args = { role, environment_id: environmentId };
+  if (profileName) args.profile_name = profileName;
+
+  const result = await mcpCall(mcpUrl, token, 'acquire_profile', args);
 
   const profile = result?.data || result;
-  if (!profile?.profile_id) throw new Error(`acquire_profile failed for role "${role}": no profile returned`);
+  if (!profile?.profile_id) throw new Error(`acquire_profile failed for role "${role}"${profileName ? ` (profile_name: "${profileName}")` : ''}: no profile returned`);
 
-  acquiredProfiles.set(role, profile);
+  acquiredProfiles.set(key, profile);
   return profile;
 }
 
@@ -440,6 +447,10 @@ async function resolveAction(mcpUrl, token, action) {
 
 // Shared state: last snapshot text, available to branch conditions
 let _lastSnapshot = '';
+// Shared state: last API response (for assert/capture steps)
+let _lastApiResponse = null;
+// Shared state: captured values from API responses (for use in later steps)
+const _captures = new Map();
 
 function evaluateCondition(condition, params) {
   if (!condition) return true;
@@ -459,7 +470,7 @@ function evaluateCondition(condition, params) {
   return false;
 }
 
-async function executeEvalStep(session, step, headless, params) {
+async function executeEvalStep(session, step, headless, params, mcpCtx) {
   // Conditional skip — any step with a `condition` field
   if (step.condition && !evaluateCondition(step.condition, params)) {
     return { stdout: 'skipped (condition false)', stderr: '', ok: true };
@@ -488,7 +499,7 @@ async function executeEvalStep(session, step, headless, params) {
     }
     // Execute sub-steps sequentially
     for (const subStep of step.then) {
-      const result = await executeEvalStep(session, subStep, headless, params);
+      const result = await executeEvalStep(session, subStep, headless, params, mcpCtx);
       if (!result.ok) return result;
     }
     return { stdout: 'branch completed', stderr: '', ok: true };
@@ -640,7 +651,160 @@ async function executeEvalStep(session, step, headless, params) {
     return abExec(session, parts, opts);
   }
 
+  // ── MCP call (backend data verification — any platform) ──
+  if (step.type === 'mcp_call') {
+    return executeMcpCallStep(step, mcpCtx);
+  }
+
+  // ── Assert (check last MCP/API response) ──
+  if (step.type === 'assert') {
+    return executeAssertStep(step);
+  }
+
+  // ── Capture (save field from last MCP/API response) ──
+  if (step.type === 'capture') {
+    return executeCaptureStep(step);
+  }
+
   return { stdout: '', stderr: `Unknown step type: ${JSON.stringify(Object.keys(step))}`, ok: false };
+}
+
+// ─── Backend Verification Steps ────────────────────────────────────────────
+//
+// Supports API-based backend verification. Step types:
+//   bubble_api  — HTTP call to Bubble's Data API (list or get records)
+//   assert      — validate fields in _lastApiResponse
+//   capture     — save fields from _lastApiResponse to _captures map
+//
+// The _captures map is accessible via {{capture:name}} substitution in
+// subsequent eval steps (profile/fixture substitution already exists).
+
+/**
+ * Execute any MCP tool and store the response for assert/capture steps.
+ * This is the generic backend verification mechanism — works with any
+ * MCP tool: bubble_list_records, supabase_query, or any future tool.
+ */
+async function executeMcpCallStep(step, mcpCtx) {
+  if (!mcpCtx?.mcpUrl || !mcpCtx?.token) {
+    return { stdout: '', stderr: 'mcp_call: no MCP context (mcpUrl/token) available', ok: false };
+  }
+  const tool = step.tool;
+  if (!tool) return { stdout: '', stderr: 'mcp_call: "tool" field required', ok: false };
+
+  // Route to the correct MCP server:
+  //   V3 (/mcp/v3/) — QA tools (resolve_action, get_test_details, etc.)
+  //   V1 (/mcp/)    — Project data tools (bubble_list_records, supabase_query, etc.)
+  // Backend verification blocks use data tools → V1
+  const url = mcpCtx.mcpDataUrl || mcpCtx.mcpUrl;
+
+  try {
+    const result = await mcpCall(url, mcpCtx.token, tool, step.params || {});
+
+    // Fail loudly on error responses — don't silently fall through to assert steps.
+    // mcpCall may return: a string (MCP error text), { error: "..." }, or { success: false, error: "..." }
+    if (typeof result === 'string' && result.startsWith('MCP error')) {
+      return { stdout: '', stderr: `mcp_call ${tool} failed: ${result.slice(0, 300)}`, ok: false };
+    }
+    if (result?.error) {
+      return { stdout: '', stderr: `mcp_call ${tool} failed: ${typeof result.error === 'string' ? result.error : JSON.stringify(result.error)}`.slice(0, 300), ok: false };
+    }
+    if (result?.success === false) {
+      return { stdout: '', stderr: `mcp_call ${tool} failed: ${result.message || result.error || 'unknown error'}`, ok: false };
+    }
+
+    _lastApiResponse = result?.data || result;
+
+    // Normalize list responses for assert/capture convenience:
+    // - Bubble returns { response: { results: [...], remaining: N } }
+    // - Supabase returns { rows: [...] } or an array directly
+    const rows = _lastApiResponse?.response?.results
+      || _lastApiResponse?.rows
+      || (Array.isArray(_lastApiResponse) ? _lastApiResponse : null);
+
+    if (rows) {
+      _lastApiResponse._results = rows;
+      _lastApiResponse._result_count = rows.length;
+    }
+
+    const count = _lastApiResponse._result_count ?? '?';
+    return { stdout: `ok: ${tool} returned ${count} record(s)`, stderr: '', ok: true };
+  } catch (err) {
+    return { stdout: '', stderr: `mcp_call ${tool}: ${err.message}`, ok: false };
+  }
+}
+
+/**
+ * Assert conditions on the last API response.
+ * Supported checks: expected_min, expected_max, expected_value, expected_contains
+ */
+function executeAssertStep(step) {
+  if (!_lastApiResponse) {
+    return { stdout: '', stderr: 'assert: no prior API response to check', ok: false };
+  }
+
+  const field = step.field;
+  let actual;
+
+  if (field === 'result_count') {
+    actual = _lastApiResponse._result_count ?? 0;
+  } else if (_lastApiResponse._results && _lastApiResponse._results.length > 0) {
+    // Get field from first result
+    actual = _lastApiResponse._results[0][field];
+  } else if (_lastApiResponse.response) {
+    actual = _lastApiResponse.response[field];
+  } else {
+    actual = _lastApiResponse[field];
+  }
+
+  // expected_min
+  if (step.expected_min !== undefined && (actual === undefined || actual < step.expected_min)) {
+    return { stdout: '', stderr: `assert: ${field} = ${actual}, expected >= ${step.expected_min}`, ok: false };
+  }
+  // expected_max
+  if (step.expected_max !== undefined && (actual === undefined || actual > step.expected_max)) {
+    return { stdout: '', stderr: `assert: ${field} = ${actual}, expected <= ${step.expected_max}`, ok: false };
+  }
+  // expected_value (exact match)
+  if (step.expected_value !== undefined && actual !== step.expected_value) {
+    return { stdout: '', stderr: `assert: ${field} = ${JSON.stringify(actual)}, expected ${JSON.stringify(step.expected_value)}`, ok: false };
+  }
+  // expected_contains (string includes)
+  if (step.expected_contains !== undefined && (!actual || !String(actual).includes(step.expected_contains))) {
+    return { stdout: '', stderr: `assert: ${field} does not contain "${step.expected_contains}", got ${JSON.stringify(actual)}`, ok: false };
+  }
+
+  return { stdout: `ok: assert ${field} = ${JSON.stringify(actual)}`, stderr: '', ok: true };
+}
+
+/**
+ * Capture a field from the last API response into the _captures map.
+ */
+function executeCaptureStep(step) {
+  if (!_lastApiResponse) {
+    return { stdout: '', stderr: 'capture: no prior API response', ok: false };
+  }
+
+  const field = step.field;
+  const as = step.as;
+  if (!as) return { stdout: '', stderr: 'capture: "as" name required', ok: false };
+
+  let value;
+  if (field === 'result_count') {
+    value = _lastApiResponse._result_count ?? 0;
+  } else if (_lastApiResponse._results && _lastApiResponse._results.length > 0) {
+    value = _lastApiResponse._results[0][field];
+  } else if (_lastApiResponse.response) {
+    value = _lastApiResponse.response[field];
+  } else {
+    value = _lastApiResponse[field];
+  }
+
+  if (value === undefined) {
+    return { stdout: '', stderr: `capture: field "${field}" not found in response`, ok: false };
+  }
+
+  _captures.set(as, value);
+  return { stdout: `ok: captured ${as} = ${JSON.stringify(value)}`, stderr: '', ok: true };
 }
 
 async function pollVerify(session, verifyStep, headless) {
@@ -649,7 +813,7 @@ async function pollVerify(session, verifyStep, headless) {
   const start = Date.now();
 
   while (Date.now() - start < timeout) {
-    const result = await executeEvalStep(session, verifyStep, headless);
+    const result = await executeEvalStep(session, verifyStep, headless, undefined, undefined);
     if (result.ok && result.stdout && result.stdout !== 'false' && result.stdout !== 'null' && result.stdout !== 'undefined') {
       return { ...result, verified: true };
     }
@@ -659,7 +823,7 @@ async function pollVerify(session, verifyStep, headless) {
   return { stdout: '', stderr: `Verify timed out after ${timeout}ms`, ok: false, verified: false };
 }
 
-async function executeBlock(session, block, blockIndex, mcpUrl, token, headless, log, fixturePaths, acquiredProfiles, environmentId, baseUrl) {
+async function executeBlock(session, block, blockIndex, mcpUrl, token, headless, log, fixturePaths, acquiredProfiles, environmentId, baseUrl, mcpDataUrl) {
   const blockLog = {
     block: blockIndex,
     block_type: block.block_type || 'frontend',
@@ -674,8 +838,11 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
   let blockProfile = null;
   if (block.block_type !== 'backend' && (block.role || block.profile_id)) {
     const role = block.role || 'default';
+    // Use profile_name as cache key when specified (avoids returning wrong profile
+    // when multiple profiles share the same role, e.g., "Customer" vs "Customer B")
+    const cacheKey = block.profile_name || role;
     try {
-      blockProfile = await acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles);
+      blockProfile = await acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles, block.profile_name, cacheKey);
       blockLog.profile_display = blockProfile.profile_display || blockProfile.profile_name || role;
     } catch (err) {
       blockLog.status = 'failed';
@@ -754,7 +921,16 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
           if (replaced !== stepStr) processedStep = JSON.parse(replaced);
         }
 
-        lastResult = await executeEvalStep(session, processedStep, headless, action.params);
+        // Substitute {{capture:name}} references in step fields
+        if (_captures.size > 0) {
+          let stepStr = JSON.stringify(processedStep);
+          for (const [name, val] of _captures) {
+            stepStr = stepStr.replaceAll(`{{capture:${name}}}`, typeof val === 'string' ? val : JSON.stringify(val));
+          }
+          processedStep = JSON.parse(stepStr);
+        }
+
+        lastResult = await executeEvalStep(session, processedStep, headless, action.params, { mcpUrl, mcpDataUrl, token });
         if (!lastResult.ok) {
           // Eval returned error or 'nf' (not found)
           if (lastResult.stdout === 'nf' || lastResult.stderr) {
@@ -962,7 +1138,7 @@ async function main() {
         opts.session, block, bi,
         opts.mcpUrl, opts.token,
         opts.headless, log, fixturePaths,
-        acquiredProfiles, environmentId, opts.baseUrl
+        acquiredProfiles, environmentId, opts.baseUrl, opts.mcpDataUrl
       );
 
       if (result.agenticPause) {

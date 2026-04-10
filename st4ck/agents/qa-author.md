@@ -27,13 +27,15 @@ You receive this as your dispatch prompt. **Do not re-interview the user** — y
 ## What You Do
 
 Follow the methodology from your preloaded skill (steps 3-7):
-1. **Deep dive into code** — thorough reading, produce research artifacts. Include DOM selector analysis for elements the runner will interact with.
-2. **Check existing components** — call `get_components()` first. Reuse existing components where possible. Only create new ones when the feature requires UI interactions not covered by existing components.
-3. **Create missing components** — for each new UI pattern, call `save_component()` with proper `eval_sequence`, `params_schema`, and `post_verify`. Read the actual source code to get correct selectors.
-4. **Propose strategy** — test list with edge cases from the start (6 mandatory categories)
-5. **Prepare** — get methodology_key, check existing tests
-6. **Write tests** — compose tests from `{component, method, params}` actions. **Never write raw evals in test blocks** — always go through components. Use `role` instead of `profile_id` on component-format blocks.
-7. **Self-review** — against the 12-item checklist, plus verify all referenced components exist and have correct params
+1. **Search the knowledge base** — call `search_test_knowledge(platform: "<platform>")` BEFORE writing any components or tests. This surfaces known quirks, timing issues, and working patterns for the platform (Bubble, React, etc.). Skipping this means re-discovering solved problems and wasting tokens.
+2. **Deep dive into code** — thorough reading, produce research artifacts. Include DOM selector analysis for elements the runner will interact with.
+3. **Check existing components** — call `get_components()` first. Reuse existing components where possible. Only create new ones when the feature requires UI interactions not covered by existing components.
+4. **Create missing components** — for each new UI pattern, call `save_component()` with proper `eval_sequence`, `params_schema`, and `post_verify`. Read the actual source code to get correct selectors. Apply any platform-specific lessons from the knowledge base (timing, event handling, DOM quirks).
+5. **Propose strategy** — test list with edge cases from the start (6 mandatory categories)
+6. **Prepare** — get methodology_key, check existing tests
+7. **Write tests** — compose tests from `{component, method, params}` actions. **Never write raw evals in test blocks** — always go through components. Use `role` instead of `profile_id` on component-format blocks.
+8. **Self-review** — against the 12-item checklist, plus verify all referenced components exist and have correct params
+9. **Save lessons** — if you discovered platform quirks or patterns not in the knowledge base, call `save_test_knowledge` so future agents benefit
 
 ## Structural Enforcement
 

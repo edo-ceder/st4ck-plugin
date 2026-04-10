@@ -62,7 +62,7 @@ ST4CK_TOKEN="$TOKEN" node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
 1. Run `run-test.js` — handles deterministic blocks + profile locking internally
 2. Handle exit codes:
    - **0**: Test passed — record result, continue to next test
-   - **1**: Test failed — record failure with evidence, continue to next test
+   - **1**: Test failed — search `search_test_knowledge` with the error pattern before diagnosing from scratch. Record failure with evidence, continue to next test
    - **42**: Agentic pause — handle the agentic block yourself (SQL, API call, etc.), save result via `save_execution_log`, restart with `--continue --from-block <next>`, repeat until 0 or 1
 
 ### Suite-level rules:

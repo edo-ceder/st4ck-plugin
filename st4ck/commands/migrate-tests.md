@@ -39,7 +39,11 @@ Proceed with migration?
 
 **STOP. Wait for user confirmation.**
 
-### 2. Component Discovery
+### 2. Search Knowledge Base
+
+Call `search_test_knowledge(platform: "<platform>")` to learn known quirks for this app's platform. Apply these lessons when creating components — e.g., Bubble needs extra waits after input fill, certain DOM elements render lazily. This prevents migration failures from platform-specific behavior.
+
+### 3. Component Discovery
 
 For each test, read the `scenario_blocks` and identify repeating patterns:
 - Login flows → `login.default`
@@ -48,7 +52,7 @@ For each test, read the `scenario_blocks` and identify repeating patterns:
 - Form interactions → `form.fill`, `form.submit`
 - Verification patterns → `[entity].verify_in_list`, `[entity].verify_detail`
 
-### 3. Create Missing Components
+### 4. Create Missing Components
 
 For each identified pattern:
 1. Read the actual source code to understand the UI (selectors, React components, labels)
@@ -58,7 +62,7 @@ For each identified pattern:
    - `post_verify` for success confirmation
    - `selector_notes` documenting which elements are targeted
 
-### 4. Rewrite Blocks
+### 5. Rewrite Blocks
 
 For each test case:
 1. Map each legacy action to a component call
@@ -66,7 +70,7 @@ For each test case:
 3. Preserve `expected_outcome` on each block
 4. Mark truly non-automatable actions as `{ "type": "agentic" }` (these will be handled by the agent at runtime)
 
-### 5. Human Gate
+### 6. Human Gate
 
 Present the migrated test side-by-side with the original:
 
@@ -95,7 +99,7 @@ Approve this migration? [y/n/skip]
 
 **For each test: STOP and wait for user approval before saving.**
 
-### 6. Save
+### 7. Save
 
 After user approves:
 - Call `modify_test_case` with the new `scenario_blocks`

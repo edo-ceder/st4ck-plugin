@@ -55,6 +55,8 @@ This is YOUR job as the orchestrator. The qa-author sub-agents you dispatch late
 
 4. **Check existing coverage**: Call `get_test_suites(category: "regression")` to avoid duplicating. Read PRD tree if in context.
 
+5. **Search the knowledge base**: Call `search_test_knowledge(platform: "<platform>")` to surface known quirks for this app's platform. Pass relevant lessons to the QA Author sub-agents — this prevents them from wasting tokens re-discovering solved problems.
+
 ### Step 2: Interview the User
 
 Present your findings and ask:
@@ -117,7 +119,7 @@ For each module in scope, dispatch a **qa-author** agent with:
 - Existing coverage: [what's already tested — don't duplicate]
 ```
 
-The qa-author agent has the full methodology preloaded via its skill. It starts at step 3 (deep dive into code) — steps 1-2 are done (that's what you just did above). Pass your survey findings so it doesn't re-explore from scratch.
+The qa-author agent has the full methodology preloaded via its skill. It starts at step 3 (deep dive into code) — steps 1-2 are done (that's what you just did above). Pass your survey findings AND knowledge base results so it doesn't re-explore or re-discover known platform quirks from scratch.
 
 ### Test ONE First
 

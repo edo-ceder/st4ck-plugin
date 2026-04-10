@@ -68,6 +68,8 @@ The orchestrator handled steps 1-2 (app exploration, user interview, scope agree
 
 ### Step 3: Deep Dive into the Code
 
+**FIRST**: Call `search_test_knowledge(platform: "<platform>")` to surface known quirks for this app's platform (Bubble, React, Angular, etc.). Apply these lessons when writing components — don't waste tokens re-discovering problems that have known solutions. If no platform is known, search by the framework or technology stack.
+
 This is NOT the light scan from Step 1 — this is thorough, line-by-line reading.
 
 For every feature under test, read:
@@ -205,6 +207,8 @@ Return this strategy to the orchestrator for confirmation before writing tests. 
 ### Step 6: Write the Tests
 
 **Test ONE first.** Author a single test case and self-review it against the checklist before batching the rest. Do not batch-author 42 tests based on an unverified pattern. If the first test has issues, fix the pattern before applying it to remaining tests.
+
+**When a component fails unexpectedly**: call `search_test_knowledge` with the error message BEFORE debugging from scratch. The knowledge base may have a solution. If you solve a new problem, call `save_test_knowledge` so future agents benefit.
 
 Every test MUST follow the block format rules (next section) and create its own preconditions.
 

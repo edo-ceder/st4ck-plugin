@@ -70,6 +70,7 @@ Tests are executed via `run-test.js` — a zero-LLM-call Node.js script that run
 After a test fails, diagnose:
 
 ### Element Not Found
+- **FIRST**: call `search_test_knowledge` with the error message and platform name. The knowledge base may have a known solution (e.g., Bubble pages need extra wait time for lazy-loaded elements, React portals render outside the component tree).
 - Grep the codebase for the label/selector text
 - If found in code: likely a timing/loading issue (suggest increased wait)
 - If NOT found in code: likely a code bug (element removed/renamed) or stale test component
@@ -92,6 +93,9 @@ After a test fails, diagnose:
 **Actual** (from runner): [what actually happened]
 **Recommendation**: [what should be fixed and by whom]
 ```
+
+### Knowledge Base on Failure
+Before diagnosing from scratch, call `search_test_knowledge` with the error message or symptom. Known platform quirks (Bubble page load timing, framework-specific DOM behavior, API format requirements) are documented there and can save significant debugging time. If you solve a new problem, call `save_test_knowledge` so future runners benefit.
 
 ## Flakiness Handling
 

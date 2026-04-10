@@ -16,7 +16,9 @@ Read the current state from `.st4ck/implement-state.json` for attempt counts and
 ```
 For each confirmed failure from the QA Runner:
 
-1. Read the runner's diagnosis:
+1. **Search the knowledge base FIRST**: call `search_test_knowledge` with the error message or symptom. If a known solution exists, apply it before dispatching agents. This can resolve the issue in one tool call instead of a full fix cycle.
+
+2. Read the runner's diagnosis:
    - code_bug → dispatch Code Agent to fix
    - test_bug → dispatch QA Author to fix
    - environment → STOP, report to human (can't fix environment issues)

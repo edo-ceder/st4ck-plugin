@@ -122,7 +122,7 @@ Launch in parallel with Track A:
    - User roles: [roles and permissions]
    ```
 
-   The qa-author has the full methodology preloaded via its skill. It starts at step 3 (deep dive). Pass the Phase 1 exploration results so it doesn't re-explore.
+   The qa-author has the full methodology preloaded via its skill. It starts at step 3 (deep dive). Pass the Phase 1 exploration results AND any knowledge base results (`search_test_knowledge`) so it doesn't re-explore or re-discover known platform quirks.
 
 2. When the agent returns, validate:
    - Suite ID created?
