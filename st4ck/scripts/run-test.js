@@ -827,12 +827,29 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
   const blockLog = {
     block: blockIndex,
     block_type: block.block_type || 'frontend',
+    block_mode: block.block_mode || 'scripted',
     profile_display: block.profile_display || null,
     actions: [],
     console_errors: [],
     status: 'pending',
     started_at: new Date().toISOString(),
   };
+
+  // ── BLOCK-LEVEL AGENTIC MODE ────────────────────────────────────────────
+  // Agentic blocks halt the deterministic runner before any action execution.
+  // The parent Sonnet agent receives a briefing via the pause envelope (main()
+  // loop), executes the block with its own tools (Playwright, bubble_api,
+  // etc.), marks the block as passed in the structured_log via save_execution_log,
+  // then resumes the runner with --continue --from-block N+1.
+  //
+  // We halt BEFORE profile acquisition — the parent agent manages its own
+  // session context for agentic blocks and doesn't need a locked profile.
+  if (block.block_mode === 'agentic') {
+    blockLog.agentic_brief = block.agentic_brief || block.expected_outcome || '';
+    blockLog.status = 'agentic_pause';
+    log.blocks.push(blockLog);
+    return { success: false, agenticPause: true, block: blockIndex, action: 0, log: blockLog };
+  }
 
   // Acquire profile for this block's role (frontend blocks only)
   let blockProfile = null;
@@ -1156,13 +1173,35 @@ async function main() {
         });
         executionId = saveResult?.execution_id || saveResult?.data?.execution_id || executionId;
 
-        // Output pause info to stdout for the calling agent
+        // Output pause info to stdout for the calling agent.
+        // Enriched with everything the parent needs to execute the block
+        // without round-tripping back to MCP for test details.
+        const pausedBlock = blocks[result.block] || {};
         const pauseInfo = {
           status: 'agentic_pause',
           block: result.block,
           action: result.action,
           execution_id: executionId,
           test_case_id: opts.testCaseId,
+          // Block-level agentic ('agentic') vs action-level agentic ('scripted' with
+          // an agentic action embedded). Parent agent uses this to decide whether
+          // to fulfill a whole-block brief or just a single action.
+          block_mode: result.log?.block_mode || 'scripted',
+          agentic_brief: result.log?.agentic_brief || pausedBlock.agentic_brief || null,
+          // Self-contained briefing so the parent doesn't need to re-fetch test details
+          block_info: {
+            block_type: pausedBlock.block_type || 'frontend',
+            role: pausedBlock.role || null,
+            profile_name: pausedBlock.profile_name || null,
+            entry_url: pausedBlock.entry_url || null,
+            expected_outcome: pausedBlock.expected_outcome || null,
+          },
+          // Captures so far — parent can reference {{capture:name}} values from
+          // previous scripted blocks when executing its agentic brief.
+          captures: Object.fromEntries(_captures),
+          // Guidance for the parent. Whichever path it takes, it must update
+          // the structured_log before resuming so --continue skips this block.
+          next_step: `Execute the brief with your own tools (Playwright via agent-browser, bubble_api via MCP). Then call save_execution_log to mark block ${result.block} as 'passed' in structured_log.blocks[${result.block}]. Finally resume with: node ${__filename} ${opts.testCaseId} <base_url> --continue ${executionId || '<check saved execution_id>'} --from-block ${result.block + 1}`,
         };
         console.log(JSON.stringify(pauseInfo));
         await releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles);

@@ -63,7 +63,50 @@ ST4CK_TOKEN="$TOKEN" node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
 2. Handle exit codes:
    - **0**: Test passed — record result, continue to next test
    - **1**: Test failed — search `search_test_knowledge` with the error pattern before diagnosing from scratch. Record failure with evidence, continue to next test
-   - **42**: Agentic pause — handle the agentic block yourself (SQL, API call, etc.), save result via `save_execution_log`, restart with `--continue --from-block <next>`, repeat until 0 or 1
+   - **42**: Agentic pause — see "Handling Agentic Pauses" below. Handle the block yourself, update structured_log, resume with `--continue --from-block <next>`, repeat until 0 or 1
+
+### Handling Agentic Pauses (exit 42)
+
+On exit 42, the runner writes a JSON pause envelope to **stdout** (not stderr — stderr holds progress logs). Parse that JSON first — everything you need is in it:
+
+```json
+{
+  "status": "agentic_pause",
+  "block": 3,
+  "action": 0,
+  "execution_id": "exec-...",
+  "test_case_id": "test-...",
+  "block_mode": "agentic",             // "agentic" = whole block | "scripted" = single action paused
+  "agentic_brief": "Verify today's daily order...",  // primary instruction for block-level pauses
+  "block_info": {
+    "block_type": "backend",
+    "role": "Customer",
+    "profile_name": "Customer B (cross-company)",
+    "entry_url": null,
+    "expected_outcome": "Order exists with submitted status and 1+ line items"
+  },
+  "captures": { "daily_order_id": "1712345678x999", ... },  // values captured by earlier scripted blocks
+  "next_step": "Execute the brief..., then resume with: node ... --continue ... --from-block 4"
+}
+```
+
+**Two pause shapes you will see:**
+
+1. **Block-level agentic (`block_mode: "agentic"`)** — the block is fully agentic. Use `agentic_brief` + `block_info.expected_outcome` as your brief. The block has no scripted actions to mimic. This is the common case for backend verifications that can't be reliably scripted (Hebrew/English status mismatches, field-name quirks, date-scoped queries).
+
+2. **Action-level agentic (`block_mode: "scripted"`, legacy fallback)** — a single action inside an otherwise scripted block is marked `type: "agentic"`. This is the old fallback from the pre-block_mode era. Use `get_test_details(test_case_id)` to pull the block's full action list, find the paused action by index, and fulfill it.
+
+**Execution steps for block-level agentic blocks:**
+
+1. **Acquire profile if needed**: if `block_info.role` is set, call `acquire_profile(role: block_info.role, profile_name: block_info.profile_name, environment_id: <env>)` to get credentials. Remember to release it when done.
+2. **Execute the brief** using your own tools:
+   - Frontend work: `agent-browser` CLI via `Bash` (same session the runner was using — `st4ck-reg-<timestamp>`)
+   - Backend work: `mcp_call` on the V1 data endpoint via the `mcp__st4ck__bubble_list_records` / `mcp__st4ck__supabase_query` tools
+3. **Reference captures**: if `captures.daily_order_id` exists, use it in your queries — that's the order the scripted block created before the pause.
+4. **Decide pass/fail**: write a short verdict + evidence (row count, field values, screenshot path).
+5. **Update the execution log**: call `save_execution_log({execution_id, test_case_id, status: "running", structured_log: {...}})` where `structured_log.blocks[N]` for the paused block has `status: "passed"` (or `"failed"`), your verdict, and any evidence. The runner reads this log on `--continue` and skips any block already marked `"passed"`.
+6. **Resume the runner**: `node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js <test_id> <base_url> --continue <execution_id> --from-block <N+1>`
+7. **If your verdict was "failed"**: don't resume. Record the failure for the report and move to the next test.
 
 ### Suite-level rules:
 - Run tests within a suite **sequentially** (one browser session at a time)
