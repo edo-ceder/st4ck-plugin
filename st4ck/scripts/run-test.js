@@ -293,7 +293,64 @@ async function abNavigate(session, url, opts = {}) {
 }
 
 async function abClose(session) {
-  return abExec(session, ['close']);
+  // 1. Graceful close (closes browser, may or may not kill daemon process).
+  const result = await abExec(session, ['close']);
+
+  // 2. Kill the daemon process and scrub its pid/sock files. agent-browser
+  //    leaves ~/.agent-browser/<session>.pid and .sock behind on exit; without
+  //    this step, running many tests leaks one daemon per run indefinitely.
+  try {
+    const home = process.env.HOME || require('node:os').homedir();
+    const dir = path.join(home, '.agent-browser');
+    const pidFile = path.join(dir, `${session}.pid`);
+    const sockFile = path.join(dir, `${session}.sock`);
+    if (fs.existsSync(pidFile)) {
+      const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+      if (Number.isInteger(pid) && pid > 0) {
+        try { process.kill(pid, 'SIGTERM'); } catch { /* already dead */ }
+        await new Promise(r => setTimeout(r, 200));
+        try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch { /* dead */ }
+      }
+      fs.unlinkSync(pidFile);
+    }
+    if (fs.existsSync(sockFile)) fs.unlinkSync(sockFile);
+    const engineFile = path.join(dir, `${session}.engine`);
+    if (fs.existsSync(engineFile)) fs.unlinkSync(engineFile);
+  } catch { /* best-effort */ }
+
+  return result;
+}
+
+// Garbage-collect agent-browser session files whose daemon is no longer alive.
+// Runs once at script startup so stale files from prior crashed runs get cleaned.
+function sweepDeadAgentBrowserSessions() {
+  try {
+    const home = process.env.HOME || require('node:os').homedir();
+    const dir = path.join(home, '.agent-browser');
+    if (!fs.existsSync(dir)) return;
+    const files = fs.readdirSync(dir);
+    const pidFiles = files.filter(f => f.endsWith('.pid'));
+    let swept = 0;
+    for (const pidFile of pidFiles) {
+      const full = path.join(dir, pidFile);
+      let alive = false;
+      try {
+        const pid = parseInt(fs.readFileSync(full, 'utf8').trim(), 10);
+        if (Number.isInteger(pid) && pid > 0) {
+          try { process.kill(pid, 0); alive = true; } catch { alive = false; }
+        }
+      } catch { /* unreadable, treat as dead */ }
+      if (!alive) {
+        const base = pidFile.slice(0, -4);
+        for (const ext of ['.pid', '.sock', '.engine']) {
+          const f = path.join(dir, base + ext);
+          try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
+        }
+        swept++;
+      }
+    }
+    if (swept > 0) console.error(`[cleanup] swept ${swept} stale agent-browser session file(s)`);
+  } catch { /* best-effort */ }
 }
 
 async function abSnapshot(session) {
@@ -1058,6 +1115,7 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
 
 async function main() {
   checkNodeVersion();
+  sweepDeadAgentBrowserSessions();
   const opts = parseArgs();
 
   const log = {
