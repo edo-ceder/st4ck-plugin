@@ -948,25 +948,41 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
         }
 
         lastResult = await executeEvalStep(session, processedStep, headless, action.params, { mcpUrl, mcpDataUrl, token });
-        if (!lastResult.ok) {
-          // Eval returned error or 'nf' (not found)
-          if (lastResult.stdout === 'nf' || lastResult.stderr) {
-            // Capture DOM snapshot + screenshot on failure
-            const snapshot = await abSnapshot(session);
-            const screenshot = await abScreenshot(session);
-            actionLog.failure = {
-              step: processedStep,
-              stdout: lastResult.stdout,
-              stderr: lastResult.stderr,
-              dom_snapshot: snapshot.stdout?.slice(0, 2000),
-              screenshot: screenshot.stdout,
-            };
-            actionLog.status = 'failed';
-            blockLog.actions.push(actionLog);
-            blockLog.status = 'failed';
-            log.blocks.push(blockLog);
-            return { success: false, log: blockLog };
-          }
+
+        // Failure detection — TWO independent triggers:
+        //   1. Process-level: agent-browser exited non-zero (timeout, crash, MCP error)
+        //   2. Eval convention: the JS expression returned an 'nf:' (not found) marker.
+        //      Component eval steps in Ori use the convention `cond ? 'ok: ...' : 'nf: <reason>'`.
+        //      agent-browser exits 0 when the JS runs cleanly, so we MUST inspect stdout content.
+        //      Without this check, every component "not found" return silently rubber-stamps
+        //      the action and the test reports green against a non-completed flow.
+        //
+        // NOTE on stderr: agent-browser writes warnings (e.g. "--headed ignored: daemon
+        // already running") to stderr on successful invocations. We do NOT treat stderr
+        // alone as failure — only when the process also exited non-zero. The original
+        // pre-fix runner had this scoping right; an earlier version of this fix
+        // incorrectly added `!!stderr` to isFailure, which made warnings fatal.
+        const stdoutTrim = (lastResult.stdout || '').trim();
+        const isNfReturn = stdoutTrim === 'nf' || stdoutTrim.startsWith('nf:');
+        const isFailure = !lastResult.ok || isNfReturn;
+
+        if (isFailure) {
+          // Capture DOM snapshot + screenshot on failure
+          const snapshot = await abSnapshot(session);
+          const screenshot = await abScreenshot(session);
+          actionLog.failure = {
+            step: processedStep,
+            stdout: lastResult.stdout,
+            stderr: lastResult.stderr,
+            dom_snapshot: snapshot.stdout?.slice(0, 2000),
+            screenshot: screenshot.stdout,
+            detection: isNfReturn ? 'nf_return' : (!lastResult.ok ? 'process_error' : 'process_stderr'),
+          };
+          actionLog.status = 'failed';
+          blockLog.actions.push(actionLog);
+          blockLog.status = 'failed';
+          log.blocks.push(blockLog);
+          return { success: false, log: blockLog };
         }
       }
 
