@@ -419,13 +419,14 @@ function cleanupFixtures(testCaseId) {
  * Acquire a test user profile by role. Returns decrypted credentials.
  * Tracks acquired profiles for cleanup on exit.
  */
-async function acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles, profileName, cacheKey) {
+async function acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles, profileName, cacheKey, properties) {
   const key = cacheKey || role;
   // Check if we already acquired a profile for this key
   if (acquiredProfiles.has(key)) return acquiredProfiles.get(key);
 
   const args = { role, environment_id: environmentId };
   if (profileName) args.profile_name = profileName;
+  if (properties && typeof properties === 'object' && Object.keys(properties).length > 0) args.properties = properties;
 
   const result = await mcpCall(mcpUrl, token, 'acquire_profile', args);
 
@@ -916,7 +917,7 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
     // when multiple profiles share the same role, e.g., "Customer" vs "Customer B")
     const cacheKey = block.profile_name || role;
     try {
-      blockProfile = await acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles, block.profile_name, cacheKey);
+      blockProfile = await acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles, block.profile_name, cacheKey, block.properties);
       blockLog.profile_display = blockProfile.profile_display || blockProfile.profile_name || role;
     } catch (err) {
       blockLog.status = 'failed';
