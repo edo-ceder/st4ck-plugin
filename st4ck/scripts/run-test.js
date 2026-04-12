@@ -1085,9 +1085,11 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
 
   // Console error check after block
   const errors = await abErrors(session);
-  if (errors.ok && errors.stdout && errors.stdout.trim() !== '[]' && errors.stdout.trim() !== '') {
+  // Strip ANSI escape codes from agent-browser output formatting before checking
+  const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '').trim();
+  if (errors.ok && errors.stdout && stripAnsi(errors.stdout) !== '[]' && stripAnsi(errors.stdout) !== '') {
     try {
-      const parsed = JSON.parse(errors.stdout);
+      const parsed = JSON.parse(stripAnsi(errors.stdout));
       if (Array.isArray(parsed) && parsed.length > 0) {
         blockLog.console_errors = parsed;
         blockLog.status = 'failed';
@@ -1096,9 +1098,10 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
         return { success: false, log: blockLog };
       }
     } catch {
-      // Non-JSON errors output — check if non-empty
-      if (errors.stdout.trim().length > 0) {
-        blockLog.console_errors = [errors.stdout.trim()];
+      // Non-JSON errors output — check if non-empty after ANSI stripping
+      const cleaned = stripAnsi(errors.stdout);
+      if (cleaned.length > 0 && cleaned !== '✗' && cleaned !== '✓') {
+        blockLog.console_errors = [cleaned];
         blockLog.status = 'failed';
         blockLog.error = 'Console errors detected';
         log.blocks.push(blockLog);
