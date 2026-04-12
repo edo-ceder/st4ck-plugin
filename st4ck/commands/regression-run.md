@@ -81,7 +81,7 @@ On exit 42, the runner writes a JSON pause envelope to **stdout** (not stderr â€
   "block_info": {
     "block_type": "backend",
     "role": "Customer",
-    "profile_name": "Customer B (cross-company)",
+    "properties": { "cross_company": true },
     "entry_url": null,
     "expected_outcome": "Order exists with submitted status and 1+ line items"
   },
@@ -98,7 +98,7 @@ On exit 42, the runner writes a JSON pause envelope to **stdout** (not stderr â€
 
 **Execution steps for block-level agentic blocks:**
 
-1. **Acquire profile if needed**: if `block_info.role` is set, call `acquire_profile(role: block_info.role, profile_name: block_info.profile_name, environment_id: <env>)` to get credentials. Remember to release it when done.
+1. **Acquire profile if needed**: if `block_info.role` is set, call `acquire_profile(role: block_info.role, properties: block_info.properties, environment_id: <env>)` to get credentials. Remember to release it when done.
 2. **Execute the brief** using your own tools:
    - Frontend work: `agent-browser` CLI via `Bash` (same session the runner was using â€” `st4ck-reg-<timestamp>`)
    - Backend work: `mcp_call` on the V1 data endpoint via the `mcp__st4ck__bubble_list_records` / `mcp__st4ck__supabase_query` tools

@@ -110,7 +110,8 @@ Reviewed using the existing 12-item checklist below.
 - Param-only change (different values, same component) → light review only (component seal intact)
 
 ### Profile Handling
-- Component-format blocks use `role` instead of `profile_id` (resolved at runtime via `acquire_profile`)
+- Component-format blocks use `role` (resolved at runtime via `acquire_profile`). For specialized identities, blocks also set `properties` (JSONB containment, e.g., `{cross_company: true}`)
+- Verify that blocks needing a specific identity have `properties` set — without it, the runner may acquire the wrong profile from the generic pool
 - Legacy blocks still require `profile_id`
 
 ## Block Format Rules (Reference for Validation)
