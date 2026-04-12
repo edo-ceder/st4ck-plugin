@@ -926,9 +926,11 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
     }
   }
 
-  // Navigate to entry_url if set
+  // Navigate to entry_url if set (substitute {{base_url}} placeholder)
   if (block.entry_url) {
-    const navResult = await abNavigate(session, block.entry_url, { headed: !headless });
+    let entryUrl = block.entry_url;
+    if (baseUrl) entryUrl = entryUrl.replaceAll('{{base_url}}', baseUrl.replace(/\/$/, ''));
+    const navResult = await abNavigate(session, entryUrl, { headed: !headless });
     if (!navResult.ok) {
       blockLog.status = 'failed';
       blockLog.error = `Failed to navigate to entry_url: ${navResult.stderr}`;
