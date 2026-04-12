@@ -911,8 +911,9 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
 
   // Acquire profile for this block's role (frontend blocks only)
   let blockProfile = null;
-  if (block.block_type !== 'backend' && (block.role || block.profile_id)) {
-    const role = block.role || 'default';
+  if (block.block_type !== 'backend' && block.role) {
+    // Component-format: acquire profile by role + optional properties
+    const role = block.role;
     // Cache key: properties JSON (deterministic) > profile_name (legacy) > role
     // This ensures blocks with the same role+properties reuse the same locked profile,
     // while blocks with different properties get separate profiles from the pool.
@@ -1276,6 +1277,7 @@ async function main() {
             block_type: pausedBlock.block_type || 'frontend',
             role: pausedBlock.role || null,
             profile_name: pausedBlock.profile_name || null,
+            properties: pausedBlock.properties || null,
             entry_url: pausedBlock.entry_url || null,
             expected_outcome: pausedBlock.expected_outcome || null,
           },
