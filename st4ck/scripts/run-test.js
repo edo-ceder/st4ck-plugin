@@ -913,9 +913,12 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
   let blockProfile = null;
   if (block.block_type !== 'backend' && (block.role || block.profile_id)) {
     const role = block.role || 'default';
-    // Use profile_name as cache key when specified (avoids returning wrong profile
-    // when multiple profiles share the same role, e.g., "Customer" vs "Customer B")
-    const cacheKey = block.profile_name || role;
+    // Cache key: properties JSON (deterministic) > profile_name (legacy) > role
+    // This ensures blocks with the same role+properties reuse the same locked profile,
+    // while blocks with different properties get separate profiles from the pool.
+    const props = block.properties && typeof block.properties === 'object' && Object.keys(block.properties).length > 0
+      ? block.properties : null;
+    const cacheKey = props ? `${role}:${JSON.stringify(props, Object.keys(props).sort())}` : (block.profile_name || role);
     try {
       blockProfile = await acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles, block.profile_name, cacheKey, block.properties);
       blockLog.profile_display = blockProfile.profile_display || blockProfile.profile_name || role;
