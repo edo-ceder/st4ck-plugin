@@ -35,7 +35,7 @@ From `$ARGUMENTS`:
 Run the deterministic runner:
 
 ```bash
-ST4CK_TOKEN="$TOKEN" node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
+node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
   <test_case_id> <base_url> --session "st4ck-$(date +%s)"
 ```
 
@@ -51,21 +51,34 @@ ST4CK_TOKEN="$TOKEN" node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
 
 ### Agentic Block Handoff (exit 42)
 
-When the script exits with code 42, stdout contains:
+When the script exits with code 42, stdout contains a comprehensive JSON pause envelope with everything you need:
 ```json
-{"status":"agentic_pause","block":3,"action":2,"execution_id":"...","test_case_id":"..."}
+{
+  "status": "agentic_pause",
+  "block": 3, "action": 0,
+  "execution_id": "...", "test_case_id": "...",
+  "block_mode": "agentic",
+  "agentic_brief": "Verify today's daily order...",
+  "block_info": {
+    "block_type": "backend", "role": "Customer",
+    "properties": { "cross_company": true },
+    "entry_url": null, "expected_outcome": "..."
+  },
+  "captures": { "daily_order_id": "..." },
+  "next_step": "Execute the brief..., then resume with: node ... --continue ... --from-block 4"
+}
 ```
 
-1. Read the block definition from the test case's `scenario_blocks[block]`
-2. Handle the agentic action yourself:
-   - **SQL actions**: Execute via MCP `supabase_query` tool
-   - **API actions**: Use `fetch` or appropriate MCP tool
-   - **Complex actions**: Use your judgment (you're Sonnet, you can reason)
+1. Parse the pause envelope — `agentic_brief` is your primary instruction, `captures` has values from earlier scripted blocks
+2. Handle the agentic block yourself:
+   - **Backend blocks**: Use `bubble_list_records` / `supabase_query` MCP tools to verify data
+   - **Frontend blocks**: Use `agent-browser` CLI via Bash (same session the runner was using)
+   - If `block_info.role` is set and you need credentials, call `acquire_profile(role, properties, environment_id)`
 3. Save your block result via `save_execution_log(execution_id, structured_log_update)`
 4. Restart the runner to continue:
 
 ```bash
-ST4CK_TOKEN="$TOKEN" node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
+node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
   <test_case_id> <base_url> \
   --continue <execution_id> --from-block <next_block>
 ```
@@ -77,7 +90,7 @@ ST4CK_TOKEN="$TOKEN" node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
 If a test failed at block N and the user wants to retry after a fix:
 
 ```bash
-ST4CK_TOKEN="$TOKEN" node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
+node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
   <test_case_id> <base_url> \
   --continue <execution_id> --from-block <N>
 ```

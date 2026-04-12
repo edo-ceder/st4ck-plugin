@@ -39,7 +39,9 @@ For each resolved suite:
 3. If any blockers exist:
    **STOP. Report blockers and recommend action.**
    - "Y tests are unsigned — run `/regression-author` to review and sign them"
-   - "Z tests have no profile — link profiles in st4ck before running"
+   - "Z tests have frontend blocks without role or profile_id — add role to component-format blocks"
+   
+   NOTE: `get_suite_health` does not report signature status. To check for unsigned tests, call `get_test_details` on each test and check `journey_signature` (component-format) or `review_signature` (legacy). Tests without the appropriate signature cannot be executed by the deterministic runner.
 
 4. If all tests are ready, confirm:
    ```
@@ -54,9 +56,11 @@ For each resolved suite:
 For each test in the suite, run the **deterministic runner** (zero LLM cost):
 
 ```bash
-ST4CK_TOKEN="$TOKEN" node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
+node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
   <test_case_id> <base_url> --session "st4ck-reg-$(date +%s)"
 ```
+
+The runner reads `ST4CK_TOKEN` from the environment. Claude Code automatically sets it from the `headers.Authorization` value in `.mcp.json`. Do not pass it inline.
 
 ### Execution flow per test:
 1. Run `run-test.js` — handles deterministic blocks + profile locking internally
@@ -105,7 +109,7 @@ On exit 42, the runner writes a JSON pause envelope to **stdout** (not stderr �
 3. **Reference captures**: if `captures.daily_order_id` exists, use it in your queries — that's the order the scripted block created before the pause.
 4. **Decide pass/fail**: write a short verdict + evidence (row count, field values, screenshot path).
 5. **Update the execution log**: call `save_execution_log({execution_id, test_case_id, status: "running", structured_log: {...}})` where `structured_log.blocks[N]` for the paused block has `status: "passed"` (or `"failed"`), your verdict, and any evidence. The runner reads this log on `--continue` and skips any block already marked `"passed"`.
-6. **Resume the runner**: `node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js <test_id> <base_url> --continue <execution_id> --from-block <N+1>`
+6. **Resume the runner**: `node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js <test_id> <base_url> --continue <execution_id> --from-block <N+1>`. The runner reads `ST4CK_TOKEN` from env.
 7. **If your verdict was "failed"**: don't resume. Record the failure for the report and move to the next test.
 
 ### Suite-level rules:
