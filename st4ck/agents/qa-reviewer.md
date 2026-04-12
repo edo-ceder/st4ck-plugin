@@ -105,7 +105,7 @@ For each referenced component, call `get_component(name, method)` and review the
 Reviewed using the existing 12-item checklist below.
 
 ### Seal Rules
-- Component `eval_sequence` change → component `review_signature` breaks → component needs re-review
+- Component `eval_sequence` change → component `review_signature` breaks → component needs re-review. ALSO: `journey_signature` is cascade-cleared on ALL tests referencing this component (server-side). Those tests need re-review too.
 - Block/flow change → journey `journey_signature` breaks → test needs re-review
 - Param-only change (different values, same component) → light review only (component seal intact)
 
