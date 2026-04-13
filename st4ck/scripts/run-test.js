@@ -378,12 +378,13 @@ async function downloadFixtures(mcpUrl, token, testCaseId) {
     return {}; // No fixtures or error — continue without
   }
 
-  if (!urlData?.urls || Object.keys(urlData.urls).length === 0) return {};
+  const urls = urlData?.data?.urls || urlData?.urls;
+  if (!urls || Object.keys(urls).length === 0) return {};
 
   fs.mkdirSync(fixtureDir, { recursive: true });
   const localPaths = {};
 
-  for (const [name, signedUrl] of Object.entries(urlData.urls)) {
+  for (const [name, signedUrl] of Object.entries(urls)) {
     const safeName = path.basename(name);
     const rand = crypto.randomBytes(2).toString('hex');
     const ext = path.extname(safeName);
