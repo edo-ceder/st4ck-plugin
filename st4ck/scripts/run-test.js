@@ -1174,13 +1174,23 @@ async function main() {
   process.on('SIGTERM', () => {
     // Best-effort cleanup (async, may not complete before exit)
     releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles).catch(() => {});
-    abClose(opts.session).catch(() => {});
+    // Close all browser window sessions on signal
+    if (windowSessions && windowSessions.size > 0) {
+      for (const [, sess] of windowSessions) abClose(sess).catch(() => {});
+    } else {
+      abClose(opts.session).catch(() => {});
+    }
     cleanupFixtures(opts.testCaseId);
     process.exit(1);
   });
   process.on('SIGINT', () => {
     releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles).catch(() => {});
-    abClose(opts.session).catch(() => {});
+    // Close all browser window sessions on signal
+    if (windowSessions && windowSessions.size > 0) {
+      for (const [, sess] of windowSessions) abClose(sess).catch(() => {});
+    } else {
+      abClose(opts.session).catch(() => {});
+    }
     cleanupFixtures(opts.testCaseId);
     process.exit(1);
   });
@@ -1251,6 +1261,23 @@ async function main() {
     // Determine start block
     const startBlock = opts.fromBlock >= 0 ? opts.fromBlock : 0;
 
+    // Browser window → session mapping. Different browser_window numbers get
+    // isolated agent-browser sessions (separate browser contexts with independent
+    // cookies/localStorage). Window 1 uses the default session; others are created
+    // on demand. This enables multi-user tests and unauthenticated-vs-authenticated
+    // checks without session leakage.
+    const windowSessions = new Map();
+    windowSessions.set(1, opts.session); // Default window uses the main session
+
+    function getSessionForWindow(windowNum) {
+      if (!windowSessions.has(windowNum)) {
+        const newSession = `${opts.session}-w${windowNum}`;
+        windowSessions.set(windowNum, newSession);
+        console.error(`[session] Created isolated session ${newSession} for browser_window=${windowNum}`);
+      }
+      return windowSessions.get(windowNum);
+    }
+
     // Execute blocks sequentially — skip already-completed blocks (R6)
     for (let bi = startBlock; bi < blocks.length; bi++) {
       // When continuing, skip blocks already recorded as passed in the loaded log
@@ -1260,10 +1287,12 @@ async function main() {
       }
 
       const block = blocks[bi];
-      console.error(`[block ${bi}/${blocks.length - 1}] ${block.block_type || 'frontend'} — ${block.description || 'unnamed'}`);
+      const windowNum = block.browser_window || 1;
+      const blockSession = getSessionForWindow(windowNum);
+      console.error(`[block ${bi}/${blocks.length - 1}] ${block.block_type || 'frontend'} — ${block.description || 'unnamed'} [window=${windowNum}, session=${blockSession}]`);
 
       const result = await executeBlock(
-        opts.session, block, bi,
+        blockSession, block, bi,
         opts.mcpUrl, opts.token,
         opts.headless, log, fixturePaths,
         acquiredProfiles, environmentId, opts.baseUrl, opts.mcpDataUrl
@@ -1317,7 +1346,11 @@ async function main() {
         };
         console.log(JSON.stringify(pauseInfo));
         await releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles);
-        await abClose(opts.session).catch(() => {});
+        // Close all browser window sessions
+        for (const [, sess] of windowSessions || []) {
+          await abClose(sess).catch(() => {});
+        }
+        if (!windowSessions || windowSessions.size === 0) await abClose(opts.session).catch(() => {});
         process.exit(42);
       }
 
@@ -1339,7 +1372,11 @@ async function main() {
         const logPath = `${LOG_FILE_PREFIX}${Date.now()}.json`;
         fs.writeFileSync(logPath, JSON.stringify(log, null, 2));
         console.error(`[FAIL] Block ${bi} failed. Log: ${logPath}`);
-        await abClose(opts.session).catch(() => {});
+        // Close all browser window sessions
+        for (const [, sess] of windowSessions || []) {
+          await abClose(sess).catch(() => {});
+        }
+        if (!windowSessions || windowSessions.size === 0) await abClose(opts.session).catch(() => {});
         process.exit(1);
       }
     }
@@ -1363,7 +1400,11 @@ async function main() {
 
     // Release all acquired profiles
     await releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles);
-    await abClose(opts.session).catch(() => {});
+    // Close all browser window sessions
+    for (const [, sess] of windowSessions || []) {
+      await abClose(sess).catch(() => {});
+    }
+    if (!windowSessions || windowSessions.size === 0) await abClose(opts.session).catch(() => {});
 
     process.exit(0);
 
