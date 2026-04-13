@@ -51,6 +51,8 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
 
 ### Agentic Block Handoff (exit 42)
 
+**Agentic blocks are a LAST RESORT.** They should only exist when the block requires runtime decision-making (branching on unpredictable state, visual judgment, or dynamic query construction). If a test has agentic blocks for "complex UI" like date pickers, edit dialogs, or Radix dropdowns — those should be scripted as components instead. Challenge any agentic block before executing it.
+
 When the script exits with code 42, stdout contains a comprehensive JSON pause envelope with everything you need:
 ```json
 {

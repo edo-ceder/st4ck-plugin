@@ -68,7 +68,7 @@ For each test case:
 1. Map each legacy action to a component call
 2. Add `role` to frontend blocks (replacing `profile_id`)
 3. Preserve `expected_outcome` on each block
-4. Mark truly non-automatable actions as `{ "type": "agentic" }` (these will be handled by the agent at runtime)
+4. Challenge every action: can this be scripted as eval steps? Date pickers, edit dialogs, dropdowns — all scriptable. Only mark as agentic if the block requires runtime DECISION-MAKING (branching on unpredictable state, visual judgment). This should be extremely rare.
 
 ### 6. Human Gate
 
@@ -110,6 +110,6 @@ After user approves:
 
 - Never auto-save without user approval
 - Preserve the test's intent — the migrated version must test the same thing
-- If a legacy action can't be mapped to a component, keep it as `{ "type": "agentic" }` — don't force-fit
+- If a legacy action can't be mapped to an EXISTING component, CREATE a new component for it. Debug the interaction with agent-browser first, then script it. Marking as agentic is a last resort — only when runtime decision-making is genuinely required.
 - Create components with good `selector_notes` so they're maintainable
-- After migration, the test should be executable by `run-test.js` (with agentic pauses for any remaining legacy actions)
+- After migration, the test should be fully executable by `run-test.js` with zero agentic pauses. An agentic pause in a migrated test means the migration is incomplete.

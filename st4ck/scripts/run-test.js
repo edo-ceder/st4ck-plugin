@@ -13,7 +13,7 @@
  * Exit codes:
  *   0  — all blocks completed successfully
  *   1  — failure (eval error, browser crash, MCP error)
- *   42 — agentic pause (block requires agent handling)
+ *   42 — agentic pause (LAST RESORT — block requires runtime decision-making, not just complex UI)
  *
  * Environment:
  *   ST4CK_TOKEN  — MCP auth token (preferred over positional arg)
@@ -916,12 +916,14 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
     started_at: new Date().toISOString(),
   };
 
-  // ── BLOCK-LEVEL AGENTIC MODE ────────────────────────────────────────────
-  // Agentic blocks halt the deterministic runner before any action execution.
-  // The parent Sonnet agent receives a briefing via the pause envelope (main()
-  // loop), executes the block with its own tools (Playwright, bubble_api,
-  // etc.), marks the block as passed in the structured_log via save_execution_log,
-  // then resumes the runner with --continue --from-block N+1.
+  // ── BLOCK-LEVEL AGENTIC MODE (LAST RESORT) ──────────────────────────────
+  // Agentic blocks are a LAST RESORT — only for blocks requiring runtime
+  // decision-making (branching on unpredictable state, visual judgment,
+  // dynamic query construction). "Complex UI" is NOT valid — every fixed
+  // UI sequence is scriptable as a component.
+  // The parent Sonnet agent receives a briefing via the pause envelope,
+  // executes the block, marks it passed via save_execution_log,
+  // then resumes with --continue --from-block N+1.
   //
   // We halt BEFORE profile acquisition — the parent agent manages its own
   // session context for agentic blocks and doesn't need a locked profile.
@@ -1323,9 +1325,9 @@ async function main() {
           action: result.action,
           execution_id: executionId,
           test_case_id: opts.testCaseId,
-          // Block-level agentic ('agentic') vs action-level agentic ('scripted' with
-          // an agentic action embedded). Parent agent uses this to decide whether
-          // to fulfill a whole-block brief or just a single action.
+          // Block-level agentic ('agentic') vs action-level legacy ('scripted' with
+          // a legacy {action,expected} action). Agentic blocks are LAST RESORT —
+          // only for runtime decision-making, not complex UI.
           block_mode: result.log?.block_mode || 'scripted',
           agentic_brief: result.log?.agentic_brief || pausedBlock.agentic_brief || null,
           // Self-contained briefing so the parent doesn't need to re-fetch test details

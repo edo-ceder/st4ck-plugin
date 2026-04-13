@@ -71,6 +71,8 @@ The runner reads `ST4CK_TOKEN` from the environment. Claude Code automatically s
 
 ### Handling Agentic Pauses (exit 42)
 
+**Agentic blocks are a LAST RESORT.** They should only exist when the block requires runtime decision-making (branching on unpredictable state, visual judgment, or dynamic query construction). "Complex UI" is never a valid reason — date pickers, edit dialogs, and Radix dropdowns are all scriptable as components. If you encounter an agentic block that looks scriptable, flag it in the report.
+
 On exit 42, the runner writes a JSON pause envelope to **stdout** (not stderr — stderr holds progress logs). Parse that JSON first — everything you need is in it:
 
 ```json
@@ -96,7 +98,7 @@ On exit 42, the runner writes a JSON pause envelope to **stdout** (not stderr �
 
 **Two pause shapes you will see:**
 
-1. **Block-level agentic (`block_mode: "agentic"`)** — the block is fully agentic. Use `agentic_brief` + `block_info.expected_outcome` as your brief. The block has no scripted actions to mimic. This is the common case for backend verifications that can't be reliably scripted (Hebrew/English status mismatches, field-name quirks, date-scoped queries).
+1. **Block-level agentic (`block_mode: "agentic"`)** — the block is fully agentic. Use `agentic_brief` + `block_info.expected_outcome` as your brief. The block has no scripted actions to mimic. This should be rare — only for blocks that genuinely require runtime decision-making (e.g., dynamic backend queries where the query shape depends on runtime data).
 
 2. **Action-level agentic (`block_mode: "scripted"`, legacy fallback)** — a single action inside an otherwise scripted block is marked `type: "agentic"`. This is the old fallback from the pre-block_mode era. Use `get_test_details(test_case_id)` to pull the block's full action list, find the paused action by index, and fulfill it.
 
