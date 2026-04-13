@@ -565,6 +565,29 @@ async function executeEvalStep(session, step, headless, params, mcpCtx) {
 
   // ── Eval (JS execution via stdin) ──
   if (step.eval) {
+    // wait_for: poll the eval expression until it returns a truthy value
+    if (step.wait_for) {
+      const timeout = step.timeout || VERIFY_POLL_MAX;
+      const interval = step.interval || VERIFY_POLL_INTERVAL;
+      const start = Date.now();
+      while (Date.now() - start < timeout) {
+        const result = await abEval(session, step.eval, opts);
+        const rawVal = result.stdout?.trim();
+        // agent-browser wraps string results in quotes: "nf: ..." → strip them
+        const val = (rawVal && rawVal.startsWith('"') && rawVal.endsWith('"'))
+          ? rawVal.slice(1, -1)
+          : rawVal;
+        // Truthy check: must be a non-empty string that isn't false/null/undefined
+        // AND must not be an 'nf:' failure marker (keep polling if component returns nf:)
+        const isFalsy = !val || val === 'false' || val === 'null' || val === 'undefined';
+        const isNf = val === 'nf' || (val && val.startsWith('nf:'));
+        if (result.ok && !isFalsy && !isNf) {
+          return result;
+        }
+        await new Promise(resolve => setTimeout(resolve, interval));
+      }
+      return { stdout: '', stderr: `wait_for eval timed out after ${timeout}ms`, ok: false };
+    }
     return abEval(session, step.eval, opts);
   }
 
@@ -1026,7 +1049,11 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
         // alone as failure — only when the process also exited non-zero. The original
         // pre-fix runner had this scoping right; an earlier version of this fix
         // incorrectly added `!!stderr` to isFailure, which made warnings fatal.
-        const stdoutTrim = (lastResult.stdout || '').trim();
+        const stdoutRaw = (lastResult.stdout || '').trim();
+        // agent-browser wraps string eval results in double quotes: "nf: ..." → strip them
+        const stdoutTrim = (stdoutRaw.startsWith('"') && stdoutRaw.endsWith('"'))
+          ? stdoutRaw.slice(1, -1)
+          : stdoutRaw;
         const isNfReturn = stdoutTrim === 'nf' || stdoutTrim.startsWith('nf:');
         const isFailure = !lastResult.ok || isNfReturn;
 
