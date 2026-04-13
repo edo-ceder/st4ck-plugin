@@ -56,6 +56,8 @@ Call `review_test(test_case_id)` — returns the test content AND a **review tok
 
 13. **AGENTIC BLOCK JUSTIFICATION** — If the test has ANY blocks with `block_mode: "agentic"`, challenge each one: does it genuinely require runtime decision-making (branching on unpredictable state, visual judgment, dynamic query construction)? "Complex UI" (date pickers, edit dialogs, Radix dropdowns) is NOT a valid reason — every fixed UI sequence is scriptable as a component. If an agentic block looks scriptable, reject the test and tell the orchestrator to convert it. Include your justification in the `agentic_justification` attestation field.
 
+14. **COMPONENT SELECTOR QUALITY** (component-format tests) — For each referenced component, verify eval_sequence uses specific selectors: `data-testid` attributes, ID selectors, class-qualified tags (`h1.text-3xl`), or attribute selectors (`input[type="file"]`). Flag any bare tag selector (`querySelector('h1')`, `querySelector('button')`). Generic selectors break on pages with multiple elements of the same type. The server blocks these at save_component time, but pre-existing components may have them. Also verify `selector_notes` cites actual source file:line.
+
 ### 3. Check coverage quality
 - Does the test actually verify the requirement it claims to cover?
 - Are edge cases covered (empty state, error state, boundary values)?
@@ -72,7 +74,7 @@ Report gaps as additional test suggestions, not failures.
 
 ### 5. Sign or reject
 
-**If the test passes all 12 checks:**
+**If the test passes all 14 checks:**
 Call `sign_test_review(test_case_id, review_token, attestation)` with:
 - `is_independent_reviewer: true`
 - All 9 attestation fields filled honestly

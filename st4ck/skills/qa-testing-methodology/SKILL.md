@@ -9,6 +9,12 @@ This skill is injected into your context by the orchestrator. It covers **how to
 
 **Before creating any test case**, call `get_qa_methodology()` once to obtain a `methodology_key` (required by `create_test_case`). You don't need to read its content — everything is in this skill.
 
+**⚠️ THREE MANDATORY RULES FOR COMPONENT CREATION** (server-enforced — violations are rejected):
+1. **Read source code first** — read the actual JSX/TSX to understand the DOM before writing any selector. Grepping for a string is not sufficient.
+2. **Use specific selectors** — `data-testid`, ID, class-qualified tags, attribute selectors. Never bare tags (`querySelector('h1')`). The server rejects generic selectors.
+3. **Test with agent-browser before saving** — run the eval step manually, inspect the snapshot, confirm it works. Never save an untested component.
+Details: see "Component Selector Quality", "Source Code Research", and "Interactive Debugging" sections under "Writing Test Steps" below.
+
 ---
 
 ## Testing Philosophy
@@ -285,6 +291,30 @@ Use multiple `browser_window` numbers for multi-user tests. Reuse the same numbe
 Steps describe what a user sees and does — visible labels, button text, form fields. Write so a QA engineer unfamiliar with the codebase can follow. Reference elements by visible text ("click the 'Save Changes' button"), not component names or CSS selectors.
 
 Keep test data dynamic: "pick a merchant from the list" not "select merchant ID abc-123."
+
+### Component Selector Quality (server-enforced)
+
+Component eval steps MUST use specific, stable selectors — never bare tag names. The server rejects components containing generic selectors like `querySelector('h1')`, `querySelector('button')`, `querySelector('div')`, etc. Always qualify with:
+- `data-testid` attributes: `[data-testid="staging-upload-btn"]`
+- ID selectors: `#signin-email`
+- Class-qualified tags: `h1.text-3xl`
+- Attribute selectors: `input[type="file"]`
+- `querySelectorAll` + `.find()` for text-based matching
+
+Generic tag selectors break when pages have multiple elements of the same type (e.g., logo h1 + page title h1).
+
+### Source Code Research (mandatory before component creation)
+
+Before creating or modifying any component, you MUST read the actual source code (JSX/TSX) to understand the DOM structure — parent/child hierarchy, available data-testid attributes, class names, sibling elements. Grepping for a string and guessing at selectors is NOT sufficient. Your `selector_notes` must cite the source file and line number where each targeted element is defined. If you cannot find the element in source code, do not create the component.
+
+### Interactive Debugging (mandatory before saving new components)
+
+When building a new component, ALWAYS test the eval steps interactively with agent-browser CLI before saving via `save_component`. If a saved component fails during a test run:
+1. Run the test up to the passing blocks via the runner
+2. Use agent-browser CLI to manually execute the failing eval step
+3. Inspect the DOM snapshot to understand what's actually on screen
+4. Fix the component based on what you observe, not what you assume
+Never blindly modify a component and re-run — that wastes review/sign cycles.
 
 ### Specific Expected Outcomes
 
