@@ -357,6 +357,85 @@ async function abSnapshot(session) {
   return abExec(session, ['snapshot', '-i']);
 }
 
+// ─── Snapshot Ref Lookup ────────────────────────────────────────────────────
+//
+// Finds the ref (e.g. "e14") of an element in an agent-browser accessibility
+// snapshot by matching visible text. Used by {click_by_text} to click
+// non-semantic `generic` elements (divs with cursor:pointer, no role) that
+// agent-browser's CSS/text selectors can't resolve but ref-based click can.
+//
+// Snapshot lines come in two shapes:
+//   - button "Foo" [ref=e12]            (text on the same line as ref)
+//   - generic [ref=e14] clickable ...   (ref on parent, text on child)
+//       - StaticText "Foo"
+//
+// Strategy: scan within an optional `scope` subtree (e.g. "dialog") for a line
+// containing "TEXT" and return the ref from that line or walk up to the
+// nearest ancestor ref.
+function findRefByTextInSnapshot(snapshot, text, scope) {
+  if (!snapshot || !text) return null;
+  const lines = snapshot.split('\n');
+  const indentOf = (l) => {
+    const m = l.match(/^(\s*)/);
+    return m ? m[1].length : 0;
+  };
+
+  let startLine = 0;
+  let endLine = lines.length;
+
+  if (scope) {
+    // Find first line whose trimmed content starts with `scope` (e.g. "dialog",
+    // "alertdialog", 'region "Foo"'). Match role tokens before any bracketed
+    // attributes so `dialog "x"` and `dialog` both work.
+    let scopeIndent = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].replace(/^[\s-]+/, '');
+      // Role token is the first word on the line (up to space, `[`, or `:`)
+      const roleMatch = trimmed.match(/^([A-Za-z]+)\b/);
+      if (roleMatch && roleMatch[1] === scope) {
+        scopeIndent = indentOf(lines[i]);
+        startLine = i + 1;
+        // End scope at next line with indent <= scopeIndent
+        for (let j = startLine; j < lines.length; j++) {
+          if (lines[j].trim() === '') continue;
+          if (indentOf(lines[j]) <= scopeIndent) { endLine = j; break; }
+        }
+        break;
+      }
+    }
+    if (scopeIndent === -1) return null;
+  }
+
+  // ref may appear anywhere in a bracketed attr list, e.g.
+  //   [ref=e14]  or  [level=3, ref=e55]  or  [expanded=false, ref=e12]
+  const refRe = /\bref=(e\d+)\b/;
+  // Match "TEXT" where the opening quote is NOT preceded by a backslash —
+  // this avoids matching escaped quotes inside other strings, e.g.
+  // `StaticText "לחץ על \"סיווג\"..."` should NOT match a search for "סיווג".
+  const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const textRe = new RegExp(`(?<!\\\\)"${escaped}"`);
+
+  for (let i = startLine; i < endLine; i++) {
+    if (!textRe.test(lines[i])) continue;
+    // Same-line ref wins
+    const selfMatch = lines[i].match(refRe);
+    if (selfMatch) return selfMatch[1];
+    // Walk up to nearest ancestor (strictly lower indent) with a ref
+    const myIndent = indentOf(lines[i]);
+    let curIndent = myIndent;
+    for (let j = i - 1; j >= startLine; j--) {
+      if (lines[j].trim() === '') continue;
+      const jIndent = indentOf(lines[j]);
+      if (jIndent >= curIndent) continue;
+      curIndent = jIndent;
+      const m = lines[j].match(refRe);
+      if (m) return m[1];
+      if (jIndent === 0) break;
+    }
+  }
+  return null;
+}
+
 async function abScreenshot(session) {
   return abExec(session, ['screenshot']);
 }
@@ -503,6 +582,11 @@ async function resolveAction(mcpUrl, token, action) {
 // Branch:            { type: "branch", condition, then } — evaluates condition
 //                      against last snapshot or params, executes `then` steps if match
 // Conditional skip:  Any step with { condition } — skipped if condition is false
+// Text-based refs:   { click_by_text, scope? } | { hover_by_text, scope? } |
+//                    { type_by_text, scope?, text } — snapshot, find ref by
+//                      visible text, then click/hover/type @ref. Use for
+//                      non-semantic elements (generic divs with cursor:pointer)
+//                      that CSS/text selectors can't resolve.
 
 // Shared state: last snapshot text, available to branch conditions
 let _lastSnapshot = '';
@@ -595,6 +679,75 @@ async function executeEvalStep(session, step, headless, params, mcpCtx) {
   // ── Navigate ──
   if (step.navigate) {
     return abNavigate(session, step.navigate, opts);
+  }
+
+  // ── Click by text (resolves via fresh accessibility snapshot) ──
+  // Use this for non-semantic `generic` elements (divs with cursor:pointer,
+  // no ARIA role) that agent-browser's CSS/text selectors can't resolve.
+  // Takes a snapshot, finds the ref of the element containing `click_by_text`
+  // (optionally scoped to a role subtree like "dialog"), then clicks @ref.
+  if (step.click_by_text) {
+    // Use tree-format snapshot (without -i) so structural role wrappers like
+    // `- dialog "..."` are preserved — required for scope-based matching.
+    // The -i flat format drops wrappers and renders everything at root level.
+    const snapResult = await abExec(session, ['snapshot'], opts);
+    if (!snapResult.ok) {
+      return { stdout: '', stderr: `click_by_text: snapshot failed: ${snapResult.stderr}`, ok: false };
+    }
+    _lastSnapshot = snapResult.stdout;
+    const ref = findRefByTextInSnapshot(snapResult.stdout, step.click_by_text, step.scope);
+    if (!ref) {
+      return {
+        stdout: '',
+        stderr: `click_by_text: no ref found for "${step.click_by_text}"${step.scope ? ` within scope "${step.scope}"` : ''}`,
+        ok: false,
+      };
+    }
+    return abExec(session, ['click', `@${ref}`], opts);
+  }
+
+  // ── Hover by text (resolves via fresh accessibility snapshot) ──
+  // Sibling of click_by_text — for non-semantic elements where CSS/text
+  // selectors can't resolve. Snapshots, finds ref by visible text, hovers @ref.
+  if (step.hover_by_text) {
+    const snapResult = await abExec(session, ['snapshot'], opts);
+    if (!snapResult.ok) {
+      return { stdout: '', stderr: `hover_by_text: snapshot failed: ${snapResult.stderr}`, ok: false };
+    }
+    _lastSnapshot = snapResult.stdout;
+    const ref = findRefByTextInSnapshot(snapResult.stdout, step.hover_by_text, step.scope);
+    if (!ref) {
+      return {
+        stdout: '',
+        stderr: `hover_by_text: no ref found for "${step.hover_by_text}"${step.scope ? ` within scope "${step.scope}"` : ''}`,
+        ok: false,
+      };
+    }
+    return abExec(session, ['hover', `@${ref}`], opts);
+  }
+
+  // ── Type by text (resolves via fresh accessibility snapshot) ──
+  // Sibling of click_by_text — snapshots, finds ref by visible text
+  // (e.g., placeholder or label), types keystrokes. Use `text` field for
+  // the content to type. Keystroke semantics (like existing {type}), NOT fill.
+  if (step.type_by_text) {
+    if (typeof step.text !== 'string') {
+      return { stdout: '', stderr: 'type_by_text: missing "text" field', ok: false };
+    }
+    const snapResult = await abExec(session, ['snapshot'], opts);
+    if (!snapResult.ok) {
+      return { stdout: '', stderr: `type_by_text: snapshot failed: ${snapResult.stderr}`, ok: false };
+    }
+    _lastSnapshot = snapResult.stdout;
+    const ref = findRefByTextInSnapshot(snapResult.stdout, step.type_by_text, step.scope);
+    if (!ref) {
+      return {
+        stdout: '',
+        stderr: `type_by_text: no ref found for "${step.type_by_text}"${step.scope ? ` within scope "${step.scope}"` : ''}`,
+        ok: false,
+      };
+    }
+    return abExec(session, ['type', `@${ref}`, step.text], opts);
   }
 
   // ── Click (supports @ref and CSS selectors) ──
