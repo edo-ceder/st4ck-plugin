@@ -9,11 +9,12 @@ This skill is injected into your context by the orchestrator. It covers **how to
 
 **Before creating any test case**, call `get_qa_methodology()` once to obtain a `methodology_key` (required by `create_test_case`). You don't need to read its content — everything is in this skill.
 
-**⚠️ THREE MANDATORY RULES FOR COMPONENT CREATION** (server-enforced — violations are rejected):
+**⚠️ FOUR MANDATORY RULES FOR COMPONENT CREATION** (enforced at save and review time):
 1. **Read source code first** — read the actual JSX/TSX to understand the DOM before writing any selector. Grepping for a string is not sufficient.
 2. **Use specific selectors** — `data-testid`, ID, class-qualified tags, attribute selectors. Never bare tags (`querySelector('h1')`). The server rejects generic selectors.
 3. **Test with agent-browser before saving** — run the eval step manually, inspect the snapshot, confirm it works. Never save an untested component.
-Details: see "Component Selector Quality", "Source Code Research", and "Interactive Debugging" sections under "Writing Test Steps" below.
+4. **Complete the triad** — before `save_component`, `selector_notes` must contain (a) source file:line, (b) snapshot excerpt, (c) KB entry ID (or "searched, nothing matched"). Review item 14 rejects components missing any leg.
+Details: see "Component Selector Quality", "Source Code Research", "Interactive Debugging", "Triad Rule (per component)", and "Text-Based Primitives" sections under "Writing Test Steps" below.
 
 ---
 
@@ -65,6 +66,16 @@ Examples:
 ### Core Principle: Test What the User Sees
 
 Every test should ultimately verify something the user can observe on screen. Backend blocks (SQL checks) confirm data persistence, but a test that only checks SQL is incomplete. If a feature works, it should be provable by navigating the app and reading what is displayed.
+
+### Core Principle: The Code + Snapshot + KB Triad (per component)
+
+Before writing or modifying ANY component, you MUST do all three of the following — not one, not two, all three — and you must do them PER COMPONENT, not once at session start:
+
+1. **READ THE SOURCE CODE** of the target element. Open the actual JSX/TSX/HTML file and locate the element. Capture file:line citations.
+2. **TAKE A LIVE SNAPSHOT** of the rendered page via agent-browser (`agent-browser open <url>` then `agent-browser snapshot`). Look at the actual accessibility tree — roles, refs, text, wrappers. Paste the relevant excerpt into the component's `selector_notes`.
+3. **SEARCH THE KNOWLEDGE BASE** with `search_test_knowledge` for prior solutions. Known DOM quirks, timing races, non-semantic element patterns, and platform-specific workarounds are already documented. Not searching means re-discovering what is already solved — on the user's budget.
+
+Skipping any leg of the triad is the single largest cause of "it should work but doesn't". Eleven failed click approaches, eight hours of theorizing, and reverted customer-app hacks all trace back to writing selectors from imagined DOM instead of observed DOM. This rule is non-negotiable and is echoed in the block-format rules and the review checklist.
 
 ---
 
@@ -316,6 +327,32 @@ When building a new component, ALWAYS test the eval steps interactively with age
 4. Fix the component based on what you observe, not what you assume
 Never blindly modify a component and re-run — that wastes review/sign cycles.
 
+### Triad Rule (per component)
+
+Before saving any component, confirm all three artifacts are present in `selector_notes`:
+- **(a)** file:line source citation for the target element
+- **(b)** a snapshot excerpt showing the element's role/ref/wrapping
+- **(c)** either a cited KB entry ID that applies to this pattern, or an explicit "searched, nothing matched" note
+
+Components without a complete triad are pre-broken. The authoritative statement of this rule lives near the top of this guide (Core Principle); this is the per-component enforcement point.
+
+### Text-Based Primitives (click_by_text, hover_by_text, type_by_text)
+
+Some elements are not reachable through CSS or text selectors. Examples: a custom card rendered as a bare div with `cursor:pointer` and an `onclick` handler but no ARIA role; a Radix `PopoverTrigger` wrapped via `asChild` around a div. The snapshot shows them with `[ref=eN]` but agent-browser's selector-to-ref resolver only covers semantic roles (button, link, combobox, option, etc.). For these elements, use the runner's text-based primitives:
+
+```
+{ click_by_text: "Category Name", scope: "dialog" }      // finds ref by visible text inside a role-scoped subtree, then clicks @ref
+{ hover_by_text: "Submenu item" }                         // same resolution, hover instead
+{ type_by_text: "Search placeholder", text: "query" }     // same resolution, keystroke the given text
+```
+
+Rules of engagement:
+1. Use ONLY for genuinely non-semantic elements — for real buttons/links/inputs, stick with CSS/data-testid selectors or native `{click}`/`{fill}`.
+2. Text must match EXACTLY what appears between quotes in the snapshot.
+3. The `scope` field accepts role tokens like `"dialog"`, `"alertdialog"`, `"region"` — it confines the search to that subtree, useful for disambiguating duplicate text.
+4. If a race condition is suspected (async render), always `wait_for` a concrete readiness signal BEFORE the text-primitive step — e.g., wait for a minimum count of cards to appear.
+5. If these primitives fail, the next action is ALWAYS to take a fresh snapshot and look, never to theorize.
+
 ### Specific Expected Outcomes
 
 Every expected outcome MUST include specific, verifiable content — exact text strings, counts, amounts, or state descriptions.
@@ -426,6 +463,8 @@ If the test needs 10 records, create 10 through the app's data entry screens. If
 
 Backend blocks are for READ-ONLY verification (SELECT). They MUST NEVER contain INSERT, UPDATE, DELETE, or any data-mutating statement. A backend block that seeds data is a methodology violation.
 
+**Data Realism Rule:** Every specific value a test clicks on — category names, subcategory names, merchant labels, status strings, option values — MUST exist in the target profile's actual data set at runtime. Invented or aspirational values produce tests that fail with "not found" errors that look like toolchain bugs but are actually data mismatches. Before writing a block that clicks on "Category X" or selects "Option Y", verify the value is present for the profile being used — either by observing it in an agent-browser snapshot of the real page, by querying the project's database (SELECT-only), or by referencing a fixture the test itself seeds through the UI. A canonical example: an earlier Plenty test clicked on subcategory `"סופרמרקט"` which did not exist for the Budget Test profile; the runner failed on "no ref found" despite the primitive being correct. Fix was to swap in a subcategory that actually existed (`"אוכל בחוץ"`). If you cannot verify a value exists, do not hard-code it — either parameterize, or select the first available option generically.
+
 **Why no database manipulation:**
 1. Real QA testers do not open pgAdmin before testing — they use the application.
 2. Database injection hides bugs in creation flows.
@@ -484,7 +523,7 @@ Lifecycle:
 
 Before starting the checklist, you MUST read all source code files referenced or implied by the tests. This is blocking — complete all file reads before evaluating any test.
 
-### Verification Checklist (12 Items)
+### Verification Checklist (14 Items)
 
 1. **SOURCES CROSS-CHECK** — Every file cited in the artifact appears in `<sources_read>`. Values citing an unlisted file are unverified.
 
@@ -509,6 +548,10 @@ Before starting the checklist, you MUST read all source code files referenced or
 11. **TEST DATA UNIQUENESS** — Test data will not partially match existing system data. Flag well-known real-world values as collision risk.
 
 12. **INPUT FORMAT VERIFICATION** — Test inputs match actual parsing logic (regex, prefix rules). Read the parsing code, do not assume from documentation.
+
+13. **COMPONENT SELECTOR QUALITY** (component-format tests only) — For each referenced component, verify `eval_sequence` uses specific selectors: `data-testid` attributes, ID selectors, class-qualified tags (`h1.text-3xl`), or attribute selectors (`input[type="file"]`). Flag any bare tag selector (`querySelector('h1')`, `querySelector('button')`). Generic selectors break on pages with multiple elements of the same type. The server blocks these at save_component time, but pre-existing components may have them. Also verify `selector_notes` cites actual source file:line.
+
+14. **COMPONENT TRIAD COMPLETENESS** (component-format tests only) — For each referenced component, verify `selector_notes` contains ALL THREE triad artifacts: **(a)** a file:line citation for the target element in the target app's source code, **(b)** a snapshot excerpt showing the element's role/ref/wrapping as observed via agent-browser, **(c)** either a cited KB entry ID (from `search_test_knowledge`) that applies to the pattern, OR an explicit "searched, nothing matched" note. A component missing any leg of the triad is a review failure. The authoritative rule is stated near the top of this guide.
 
 ### Coverage Gap Analysis
 

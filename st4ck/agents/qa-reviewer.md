@@ -28,7 +28,7 @@ For each test case:
 ### 1. Load the test
 Call `review_test(test_case_id)` — returns the test content AND a **review token** for signing.
 
-### 2. Run the 12-item verification checklist
+### 2. Run the 15-item verification checklist
 
 1. **SOURCES CROSS-CHECK** — Every file cited in the research artifact appears in `<sources_read>`. Values citing an unlisted file are unverified.
 
@@ -57,6 +57,8 @@ Call `review_test(test_case_id)` — returns the test content AND a **review tok
 13. **AGENTIC BLOCK JUSTIFICATION** — If the test has ANY blocks with `block_mode: "agentic"`, challenge each one: does it genuinely require runtime decision-making (branching on unpredictable state, visual judgment, dynamic query construction)? "Complex UI" (date pickers, edit dialogs, Radix dropdowns) is NOT a valid reason — every fixed UI sequence is scriptable as a component. If an agentic block looks scriptable, reject the test and tell the orchestrator to convert it. Include your justification in the `agentic_justification` attestation field.
 
 14. **COMPONENT SELECTOR QUALITY** (component-format tests) — For each referenced component, verify eval_sequence uses specific selectors: `data-testid` attributes, ID selectors, class-qualified tags (`h1.text-3xl`), or attribute selectors (`input[type="file"]`). Flag any bare tag selector (`querySelector('h1')`, `querySelector('button')`). Generic selectors break on pages with multiple elements of the same type. The server blocks these at save_component time, but pre-existing components may have them. Also verify `selector_notes` cites actual source file:line.
+
+15. **COMPONENT TRIAD COMPLETENESS** (component-format tests only) — For each referenced component, verify `selector_notes` contains ALL THREE triad artifacts: **(a)** a file:line source citation for the target element, **(b)** a snapshot excerpt showing the element's role/ref/wrapping as observed via agent-browser, **(c)** either a cited KB entry ID (from `search_test_knowledge`) that applies to the pattern, OR an explicit "searched, nothing matched" note. A component missing any leg of the triad is pre-broken — flag as a review failure. The authoritative rule lives in the server methodology's overview section.
 
 ### 3. Check coverage quality
 - Does the test actually verify the requirement it claims to cover?

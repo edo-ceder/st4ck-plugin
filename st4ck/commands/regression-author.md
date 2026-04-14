@@ -55,7 +55,7 @@ This is YOUR job as the orchestrator. The qa-author sub-agents you dispatch late
 
 4. **Check existing coverage**: Call `get_test_suites(category: "regression")` to avoid duplicating. Read PRD tree if in context.
 
-5. **Search the knowledge base**: Call `search_test_knowledge(platform: "<platform>")` to surface known quirks for this app's platform. Pass relevant lessons to the QA Author sub-agents — this prevents them from wasting tokens re-discovering solved problems.
+5. **Search the knowledge base**: Call `search_test_knowledge(platform: "<platform>")` to surface known quirks for this app's platform. Pass relevant lessons to the QA Author sub-agents — this prevents them from wasting tokens re-discovering solved problems. This KB search is also one leg of the per-component triad (code + snapshot + KB) that authors must complete for each new component. Forward this guidance so sub-agents treat KB search as per-component discipline, not a session-start ritual.
 
 ### Step 2: Interview the User
 

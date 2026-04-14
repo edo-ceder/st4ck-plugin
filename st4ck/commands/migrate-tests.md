@@ -58,11 +58,13 @@ For each identified pattern:
 1. **Read the actual source code** (JSX/TSX) to understand the DOM — parent/child hierarchy, data-testid attributes, class names, sibling elements. Grepping for a string is NOT sufficient. You must know the exact element and its context before writing a selector.
 2. **Use specific selectors** — `data-testid` attributes, ID selectors, class-qualified tags (`h1.text-3xl`), or attribute selectors (`input[type="file"]`). Never bare tags like `querySelector('h1')` or `querySelector('button')`. The server rejects generic selectors at save time.
 3. **Test interactively with agent-browser** before saving. Navigate to the page, run the eval step, inspect the DOM snapshot. If it works manually, script it. If it doesn't, fix it before saving — don't waste review/sign cycles on untested components.
-4. Create the component via `save_component` with:
+4. **Complete the per-component triad** — `selector_notes` must contain (a) file:line source citation, (b) snapshot excerpt showing the element's role/ref/wrapping, (c) cited KB entry ID (or "searched, nothing matched"). Reviewer will reject components missing any leg.
+5. **If the target element has no ARIA role** (bare div with `cursor:pointer` and `onclick`, Radix `asChild`-wrapped card) — CSS/text selectors cannot resolve it. Use runner primitives `click_by_text` / `hover_by_text` / `type_by_text` with optional `scope: "dialog"`. Don't invent fragile CSS for non-semantic elements.
+6. Create the component via `save_component` with:
    - Proper `eval_sequence` (agent-browser evals)
    - `params_schema` for variable parts
    - `post_verify` for success confirmation
-   - `selector_notes` citing source file:line for each targeted element
+   - `selector_notes` including all three triad artifacts (source cite + snapshot excerpt + KB ref)
 
 ### 5. Rewrite Blocks
 
