@@ -122,7 +122,9 @@ Launch in parallel with Track A:
    - User roles: [roles and permissions]
    ```
 
-   The qa-author has the full methodology preloaded via its skill. It starts at step 3 (deep dive). Pass the Phase 1 exploration results AND any knowledge base results (`search_test_knowledge`) so it doesn't re-explore or re-discover known platform quirks.
+   The qa-author fetches the QA methodology on demand via `get_qa_methodology(section: "block_format")` as its first action — the server methodology (`backend/src/mcp/v3/methodology.ts`) is the single source of truth. You do NOT need to pass methodology rules in the dispatch prompt. Pass the Phase 1 exploration results AND any knowledge base results (`search_test_knowledge`) so it doesn't re-explore or re-discover known platform quirks.
+
+   Equivalent route: activate the `qa-testing-version` skill and let its journey drive this track. The skill encapsulates the same dispatch pattern described here and may auto-activate on the user's phrasing when `/implement` invokes Phase 3.
 
 2. When the agent returns, validate:
    - Suite ID created?

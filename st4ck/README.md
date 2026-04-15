@@ -170,6 +170,19 @@ Phase 2 (coming): automated Stop hook that runs this check every time the agent 
 - After major releases to lock down behavior
 - Nightly confidence checks
 
+### QA skills auto-activate on free-text intent
+
+The QA authoring commands (`/regression-author`, `/migrate-tests`) have matching **intent skills** that auto-activate when you speak naturally. Saying "create regression tests for Expenses" triggers the `qa-testing-regression` skill (equivalent to `/regression-author Expenses`). The slash commands remain as the explicit muscle-memory form.
+
+| Intent phrase | Skill | Equivalent command |
+|---|---|---|
+| "create regression tests for X" / "protect module Y" | `qa-testing-regression` | `/regression-author X` |
+| "write tests for this feature/plan" / "version tests for" | `qa-testing-version` | (used by `/implement` Track B) |
+| "this test is failing" / "debug this run" / "selector is wrong" | `qa-testing-debug` | (no slash command) |
+| "migrate these tests" / "convert to component format" | `qa-testing-migration` | `/migrate-tests <suite>` |
+
+All four skills load the QA methodology on demand from the server (`backend/src/mcp/v3/methodology.ts`) via `get_qa_methodology` — no methodology prose is duplicated client-side.
+
 ## Known Limitations (v1)
 
 - **Single-project only** — features spanning multiple repos are not supported
