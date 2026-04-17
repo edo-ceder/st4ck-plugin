@@ -650,13 +650,24 @@ async function executeEvalStep(session, step, headless, params, mcpCtx) {
 
   // ── Eval (JS execution via stdin) ──
   if (step.eval) {
-    // wait_for: poll the eval expression until it returns a truthy value
+    // wait_for: poll an eval expression until it returns a truthy value.
+    // Supports two formats:
+    //   1. { eval, wait_for: true, timeout }          — polls step.eval
+    //   2. { eval, wait_for: { eval, timeout } }      — runs step.eval ONCE, then polls wait_for.eval
     if (step.wait_for) {
-      const timeout = step.timeout || VERIFY_POLL_MAX;
+      const isObjectWaitFor = typeof step.wait_for === 'object' && step.wait_for.eval;
+      // If wait_for is an object with its own eval, run step.eval once first, then poll wait_for.eval
+      if (isObjectWaitFor) {
+        const mainResult = await abEval(session, step.eval, opts);
+        const mainVal = mainResult.stdout?.trim()?.replace(/^"|"$/g, '');
+        if (mainVal && mainVal.startsWith('nf:')) return mainResult; // hard fail
+      }
+      const pollExpr = isObjectWaitFor ? step.wait_for.eval : step.eval;
+      const timeout = (isObjectWaitFor ? step.wait_for.timeout : step.timeout) || VERIFY_POLL_MAX;
       const interval = step.interval || VERIFY_POLL_INTERVAL;
       const start = Date.now();
       while (Date.now() - start < timeout) {
-        const result = await abEval(session, step.eval, opts);
+        const result = await abEval(session, pollExpr, opts);
         const rawVal = result.stdout?.trim();
         // agent-browser wraps string results in quotes: "nf: ..." → strip them
         const val = (rawVal && rawVal.startsWith('"') && rawVal.endsWith('"'))
@@ -1288,7 +1299,8 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
     } catch {
       // Non-JSON errors output — check if non-empty after ANSI stripping
       const cleaned = stripAnsi(errors.stdout);
-      if (cleaned.length > 0 && cleaned !== '✗' && cleaned !== '✓') {
+      // Ignore noise consisting only of CLI status glyphs (✓/✗) and whitespace
+      if (cleaned.length > 0 && !/^[✓✗\s]*$/.test(cleaned)) {
         blockLog.console_errors = [cleaned];
         blockLog.status = 'failed';
         blockLog.error = 'Console errors detected';
@@ -1511,7 +1523,13 @@ async function main() {
       }
 
       if (!result.success) {
-        // Block failed — release profiles, save log and exit
+        const isCritical = block.critical !== false; // default true if not specified
+        if (!isCritical) {
+          // Non-critical block failed — log it but continue to next block
+          console.error(`[WARN] Block ${bi} failed (non-critical, continuing). ${log.blocks[bi]?.actions?.[0]?.failure?.stdout || ''}`);
+          continue;
+        }
+        // Critical block failed — release profiles, save log and exit
         log.status = 'failed';
         log.failed_at_block = bi;
         log.finished_at = new Date().toISOString();
