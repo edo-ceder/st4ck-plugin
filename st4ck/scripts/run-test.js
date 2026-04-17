@@ -1512,13 +1512,18 @@ async function main() {
           // the structured_log before resuming so --continue skips this block.
           next_step: `Execute the brief with your own tools (Playwright via agent-browser, bubble_api via MCP). Then call save_execution_log to mark block ${result.block} as 'passed' in structured_log.blocks[${result.block}]. Finally resume with: node ${__filename} ${opts.testCaseId} <base_url> --continue ${executionId || '<check saved execution_id>'} --from-block ${result.block + 1}`,
         };
+        // Emit the pause envelope to stdout. Include the live agent-browser
+        // session so the orchestrator can attach and continue without rebuilding
+        // transient client-side state (modals, wizards, dialogs).
+        pauseInfo.session = opts.session;
+        pauseInfo.window_sessions = windowSessions ? Object.fromEntries(windowSessions) : null;
         console.log(JSON.stringify(pauseInfo));
         await releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles);
-        // Close all browser window sessions
-        for (const [, sess] of windowSessions || []) {
-          await abClose(sess).catch(() => {});
-        }
-        if (!windowSessions || windowSessions.size === 0) await abClose(opts.session).catch(() => {});
+        // NOTE: Do NOT close agent-browser sessions on agentic pause.
+        // The orchestrator needs to interact with transient dialog state
+        // that cannot be rebuilt cheaply. The orchestrator is responsible
+        // for closing the session after it's done (or the next run will
+        // reuse/overwrite it).
         process.exit(42);
       }
 
@@ -1546,11 +1551,10 @@ async function main() {
         const logPath = `${LOG_FILE_PREFIX}${Date.now()}.json`;
         fs.writeFileSync(logPath, JSON.stringify(log, null, 2));
         console.error(`[FAIL] Block ${bi} failed. Log: ${logPath}`);
-        // Close all browser window sessions
-        for (const [, sess] of windowSessions || []) {
-          await abClose(sess).catch(() => {});
-        }
-        if (!windowSessions || windowSessions.size === 0) await abClose(opts.session).catch(() => {});
+        console.error(`[FAIL] Browser session '${opts.session}' preserved for orchestrator inspection — close manually with: agent-browser close --session ${opts.session}`);
+        // NOTE: Do NOT close agent-browser sessions on critical failure either.
+        // The orchestrator may want to inspect DOM/screenshots/console state
+        // to diagnose the failure. Orchestrator is responsible for cleanup.
         process.exit(1);
       }
     }
