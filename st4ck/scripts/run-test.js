@@ -558,6 +558,18 @@ async function resolveAction(mcpUrl, token, action) {
   if (action.action && !action.component) return { agentic: true, action };
   if (!action.component) return { steps: [action], agentic: false };
 
+  // Native backend SQL dispatch: {component: "backend", method: "sql"|"query", params: {query}}
+  // Maps to an mcp_call step targeting supabase_query on V1 (project data tools), so tests can
+  // author backend SELECT assertions without needing a dedicated component definition.
+  if (action.component === 'backend' && (action.method === 'sql' || action.method === 'query')) {
+    const query = action.params?.query;
+    if (!query) throw new Error('backend.sql: params.query is required');
+    return {
+      agentic: false,
+      steps: [{ type: 'mcp_call', tool: 'supabase_query', params: { query } }],
+    };
+  }
+
   // Resolve component via MCP
   const result = await mcpCall(mcpUrl, token, 'resolve_action', {
     component_name: action.component,
