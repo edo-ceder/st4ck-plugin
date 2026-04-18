@@ -1520,8 +1520,10 @@ async function main() {
         log.paused_at_action = result.action;
 
         // Persist acquired profile IDs (not credentials) so --continue can re-acquire
-        // the SAME profiles via preferred_profile_id. The lock MUST remain held for
-        // resume — see the skipped releaseAllProfiles below.
+        // the SAME profiles via preferred_profile_id. The lock itself is RELEASED below
+        // so abandoned pauses don't block the generic pool indefinitely — resume
+        // re-acquires by ID (preferred_profile_id accepts unlocked, expired, OR
+        // still-locked-by-same-caller).
         log.acquired_profiles = Object.fromEntries(
           Array.from(acquiredProfiles.entries()).map(([key, p]) => [key, p.profile_id])
         );
@@ -1572,15 +1574,17 @@ async function main() {
         pauseInfo.session = opts.session;
         pauseInfo.window_sessions = windowSessions ? Object.fromEntries(windowSessions) : null;
         console.log(JSON.stringify(pauseInfo));
-        // NOTE: Do NOT release acquired profiles on agentic pause.
-        // Releasing would drop the lock and the pool filter (which excludes
-        // profiles locked by ANYONE, including ourselves) could hand --continue
-        // a different profile with no shared state from the earlier blocks.
-        // Locks persist via lock_expires_at and are re-asserted via
-        // preferred_profile_id on resume.
+        // Release acquired profiles before exit. Resume re-acquires the SAME
+        // profile IDs (persisted in structured_log.acquired_profiles above) via
+        // preferred_profile_id, which bypasses the pool filter. Holding the lock
+        // across an abandoned pause would block every generic-pool acquire of
+        // the same role until lock_expires_at — a cascade we hit once and now
+        // explicitly prevent. If another caller grabs the profile during a
+        // pause, --continue returns a clear 409 "locked by another caller".
         //
-        // Also do NOT close agent-browser sessions on agentic pause —
-        // the orchestrator needs transient dialog state it can't rebuild.
+        // Do NOT close agent-browser sessions on agentic pause — the
+        // orchestrator needs transient dialog state it can't rebuild.
+        await releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles);
         process.exit(42);
       }
 
