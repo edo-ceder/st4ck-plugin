@@ -1089,7 +1089,7 @@ async function pollVerify(session, verifyStep, headless) {
   return { stdout: '', stderr: `Verify timed out after ${timeout}ms`, ok: false, verified: false };
 }
 
-async function executeBlock(session, block, blockIndex, mcpUrl, token, headless, log, fixturePaths, acquiredProfiles, environmentId, baseUrl, mcpDataUrl) {
+async function executeBlock(session, block, blockIndex, mcpUrl, token, headless, log, fixturePaths, acquiredProfiles, environmentId, baseUrl, mcpDataUrl, fromBlock) {
   const blockLog = {
     block: blockIndex,
     block_type: block.block_type || 'frontend',
@@ -1141,10 +1141,16 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
     }
   }
 
-  // Navigate to entry_url if set (substitute {{base_url}} placeholder)
-  if (block.entry_url) {
+  // Navigate to entry_url only when this block is the resume entry point of a --continue run.
+  // Rationale: entry_url is documented as "URL for --continue re-entry points" — on a fresh
+  // sequential run, the previous block left the session at the right URL and re-navigating
+  // can clobber query params / modal state. Firing only on the first block of a resumed run
+  // matches the documented intent.
+  const isResumeEntryBlock = typeof fromBlock === 'number' && fromBlock >= 0 && blockIndex === fromBlock;
+  if (block.entry_url && isResumeEntryBlock) {
     let entryUrl = block.entry_url;
     if (baseUrl) entryUrl = entryUrl.replaceAll('{{base_url}}', baseUrl.replace(/\/$/, ''));
+    if (baseUrl && entryUrl.startsWith('/')) entryUrl = baseUrl.replace(/\/$/, '') + entryUrl;
     const navResult = await abNavigate(session, entryUrl, { headed: !headless });
     if (!navResult.ok) {
       blockLog.status = 'failed';
@@ -1483,7 +1489,8 @@ async function main() {
         blockSession, block, bi,
         opts.mcpUrl, opts.token,
         opts.headless, log, fixturePaths,
-        acquiredProfiles, environmentId, opts.baseUrl, opts.mcpDataUrl
+        acquiredProfiles, environmentId, opts.baseUrl, opts.mcpDataUrl,
+        opts.fromBlock
       );
 
       if (result.agenticPause) {
