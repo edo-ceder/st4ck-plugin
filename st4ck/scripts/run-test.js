@@ -499,7 +499,7 @@ function cleanupFixtures(testCaseId) {
  * Acquire a test user profile by role. Returns decrypted credentials.
  * Tracks acquired profiles for cleanup on exit.
  */
-async function acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles, profileName, cacheKey, properties) {
+async function acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles, profileName, cacheKey, properties, preferredProfileId) {
   const key = cacheKey || role;
   // Check if we already acquired a profile for this key
   if (acquiredProfiles.has(key)) return acquiredProfiles.get(key);
@@ -507,6 +507,9 @@ async function acquireProfile(mcpUrl, token, role, environmentId, acquiredProfil
   const args = { role, environment_id: environmentId };
   if (profileName) args.profile_name = profileName;
   if (properties && typeof properties === 'object' && Object.keys(properties).length > 0) args.properties = properties;
+  // Resume path: re-acquire the specific profile that earlier blocks had locked.
+  // Server extends the lock and returns credentials, bypassing the pool filter.
+  if (preferredProfileId) args.preferred_profile_id = preferredProfileId;
 
   const result = await mcpCall(mcpUrl, token, 'acquire_profile', args);
 
@@ -1089,7 +1092,7 @@ async function pollVerify(session, verifyStep, headless) {
   return { stdout: '', stderr: `Verify timed out after ${timeout}ms`, ok: false, verified: false };
 }
 
-async function executeBlock(session, block, blockIndex, mcpUrl, token, headless, log, fixturePaths, acquiredProfiles, environmentId, baseUrl, mcpDataUrl, fromBlock) {
+async function executeBlock(session, block, blockIndex, mcpUrl, token, headless, log, fixturePaths, acquiredProfiles, environmentId, baseUrl, mcpDataUrl, fromBlock, preferredProfileIds) {
   const blockLog = {
     block: blockIndex,
     block_type: block.block_type || 'frontend',
@@ -1130,8 +1133,11 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
     const props = block.properties && typeof block.properties === 'object' && Object.keys(block.properties).length > 0
       ? block.properties : null;
     const cacheKey = props ? `${role}:${JSON.stringify(props, Object.keys(props).sort())}` : (block.profile_name || role);
+    // Resume path: if --continue loaded a previously-acquired profile for this cacheKey,
+    // ask the server to re-lock that specific profile (still owned by this caller).
+    const preferredProfileId = preferredProfileIds ? preferredProfileIds.get(cacheKey) : undefined;
     try {
-      blockProfile = await acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles, block.profile_name, cacheKey, block.properties);
+      blockProfile = await acquireProfile(mcpUrl, token, role, environmentId, acquiredProfiles, block.profile_name, cacheKey, block.properties, preferredProfileId);
       blockLog.profile_display = blockProfile.profile_display || blockProfile.profile_name || role;
     } catch (err) {
       blockLog.status = 'failed';
@@ -1438,6 +1444,13 @@ async function main() {
       fixturePaths = await downloadFixtures(opts.mcpUrl, opts.token, opts.testCaseId);
     }
 
+    // Preferred profile IDs across --continue: on resume, blocks that needed a profile
+    // before the pause should re-acquire the SAME profile so their data is still
+    // coherent. The earlier run serialized `acquired_profiles: {cacheKey: profile_id}`
+    // into structured_log before exit-42. Each block's first call to acquireProfile
+    // reads its cacheKey from this map and passes preferred_profile_id to the server.
+    const preferredProfileIds = new Map();
+
     // If continuing, load existing log
     if (opts.continueExecId) {
       try {
@@ -1446,6 +1459,13 @@ async function main() {
         });
         if (existingLog?.data?.structured_log) {
           log.blocks = existingLog.data.structured_log.blocks || [];
+          const saved = existingLog.data.structured_log.acquired_profiles || {};
+          for (const [key, pid] of Object.entries(saved)) {
+            if (pid) preferredProfileIds.set(key, pid);
+          }
+          if (preferredProfileIds.size > 0) {
+            console.error(`[resume] Will re-acquire ${preferredProfileIds.size} profile(s) from prior pause: ${Array.from(preferredProfileIds.keys()).join(', ')}`);
+          }
         }
       } catch {
         console.error('[warn] Could not load existing execution log, starting fresh');
@@ -1490,7 +1510,7 @@ async function main() {
         opts.mcpUrl, opts.token,
         opts.headless, log, fixturePaths,
         acquiredProfiles, environmentId, opts.baseUrl, opts.mcpDataUrl,
-        opts.fromBlock
+        opts.fromBlock, preferredProfileIds
       );
 
       if (result.agenticPause) {
@@ -1498,6 +1518,13 @@ async function main() {
         log.status = 'agentic_pause';
         log.paused_at_block = result.block;
         log.paused_at_action = result.action;
+
+        // Persist acquired profile IDs (not credentials) so --continue can re-acquire
+        // the SAME profiles via preferred_profile_id. The lock MUST remain held for
+        // resume — see the skipped releaseAllProfiles below.
+        log.acquired_profiles = Object.fromEntries(
+          Array.from(acquiredProfiles.entries()).map(([key, p]) => [key, p.profile_id])
+        );
 
         // Save to DB
         const saveResult = await mcpCall(opts.mcpUrl, opts.token, 'save_execution_log', {
@@ -1545,12 +1572,15 @@ async function main() {
         pauseInfo.session = opts.session;
         pauseInfo.window_sessions = windowSessions ? Object.fromEntries(windowSessions) : null;
         console.log(JSON.stringify(pauseInfo));
-        await releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles);
-        // NOTE: Do NOT close agent-browser sessions on agentic pause.
-        // The orchestrator needs to interact with transient dialog state
-        // that cannot be rebuilt cheaply. The orchestrator is responsible
-        // for closing the session after it's done (or the next run will
-        // reuse/overwrite it).
+        // NOTE: Do NOT release acquired profiles on agentic pause.
+        // Releasing would drop the lock and the pool filter (which excludes
+        // profiles locked by ANYONE, including ourselves) could hand --continue
+        // a different profile with no shared state from the earlier blocks.
+        // Locks persist via lock_expires_at and are re-asserted via
+        // preferred_profile_id on resume.
+        //
+        // Also do NOT close agent-browser sessions on agentic pause —
+        // the orchestrator needs transient dialog state it can't rebuild.
         process.exit(42);
       }
 
