@@ -120,6 +120,28 @@ On exit 42, the runner writes a JSON pause envelope to **stdout** (not stderr �
 - After each suite completes, write summary to `.st4ck/regression-results-[date].json`
 - Discard raw runner output from context (the state file summary is sufficient)
 
+### Safety limits (MUST enforce)
+
+These rules exist so a broken environment, a stale selector, or a single slow model turn can't burn an entire batch without the human noticing. Treat them as hard rules, not suggestions.
+
+1. **Incremental write (heartbeat)**: after every test, append its result to `.st4ck/regression-results-[date].json` **before** any triage reasoning, search_test_knowledge call, or summary text. Ordering: runner exits → write result → then triage. This makes progress externally visible; a silent agent with no file updates is indistinguishable from a hang.
+
+2. **Triage turn budget**: no more than ~90 seconds of reasoning between tests. If a failure needs deeper diagnosis, record a short `triage_notes` field in the result and move on — the human will dig in after the batch.
+
+3. **Consecutive-failure bail**: if **3 tests in a row** fail with the **same error signature** (same missing selector, same runner error string, same MCP error), STOP the batch and return. A repeated signature almost always means an environmental/infrastructure issue, and running the remaining 30+ tests into the same wall wastes wall-clock and pollutes the report.
+
+4. **Per-test retry policy**:
+   - Exit 0: record pass, continue.
+   - Exit 1: **do not retry**. Record failure with evidence (include `log.console_errors` from the saved execution log — the runner now captures browser console on every failure), continue.
+   - Exit 42: handle the pause, resume with `--continue`. Never retry a pause — either the agentic step passed or it didn't.
+   - Bash timeout (600s) OR runner crash before any block started: retry **once**, then skip to next test with `verdict: "infrastructure_error"`. Never retry more than once.
+
+5. **Hard wall-clock cap**: 90 minutes per batch. When hit, stop wherever you are, write the partial report, and return. The human can resume the remaining tests separately.
+
+6. **Progress signal every 5 tests**: emit one line of text (e.g. `Progress: 15/40 — 11 pass, 3 fail, 1 agentic`). Keeps the human informed without verbose per-test output.
+
+Silent long pauses are acceptable when they're a single slow Sonnet inference turn (not a hang), but rules 1, 3, and 5 guarantee the batch can't silently run off the rails for long without a human seeing something.
+
 ---
 
 ## Report

@@ -1390,18 +1390,53 @@ async function main() {
         new Promise((resolve) => setTimeout(resolve, 5000)),
       ]);
     } catch { /* best effort */ }
-    try {
-      if (windowSessions && windowSessions.size > 0) {
-        for (const [, sess] of windowSessions) await abClose(sess).catch(() => {});
-      } else {
-        await abClose(opts.session).catch(() => {});
-      }
-    } catch { /* best effort */ }
+    try { await closeAllSessions(); } catch { /* best effort */ }
     cleanupFixtures(opts.testCaseId);
     process.exit(sig === 'SIGINT' ? 130 : 143);
   }
   process.on('SIGTERM', () => { handleSignal('SIGTERM'); });
   process.on('SIGINT', () => { handleSignal('SIGINT'); });
+
+  // Browser window → session mapping. Hoisted above the try block so the
+  // SIGTERM handler and the catch block can both iterate windowSessions
+  // during cleanup (const inside the try is block-scoped and unreachable
+  // from handleSignal / catch).
+  const windowSessions = new Map();
+  windowSessions.set(1, opts.session); // Default window uses the main session
+
+  function getSessionForWindow(windowNum) {
+    if (!windowSessions.has(windowNum)) {
+      const newSession = `${opts.session}-w${windowNum}`;
+      windowSessions.set(windowNum, newSession);
+      console.error(`[session] Created isolated session ${newSession} for browser_window=${windowNum}`);
+    }
+    return windowSessions.get(windowNum);
+  }
+
+  // Capture browser console errors from every live window session. Called on
+  // failure/error paths so the saved structured_log carries diagnostic context
+  // without the orchestrator needing to reattach to the browser.
+  async function captureConsoleErrors() {
+    const out = {};
+    for (const [win, sess] of windowSessions) {
+      try {
+        const r = await abErrors(sess);
+        const text = (r.stdout || '') + (r.stderr ? `\n[stderr] ${r.stderr}` : '');
+        if (text.trim()) out[`window_${win}`] = text.trim();
+      } catch (err) {
+        out[`window_${win}`] = `[capture failed: ${err.message}]`;
+      }
+    }
+    return out;
+  }
+
+  // Close every window session. abClose also kills the agent-browser daemon
+  // and scrubs its pid/sock files, so callers don't leak a daemon per run.
+  async function closeAllSessions() {
+    for (const [, sess] of windowSessions) {
+      await abClose(sess).catch(() => {});
+    }
+  }
 
   try {
     // Get test case details via MCP
@@ -1483,24 +1518,9 @@ async function main() {
     // Determine start block
     const startBlock = opts.fromBlock >= 0 ? opts.fromBlock : 0;
 
-    // Browser window → session mapping. Different browser_window numbers get
-    // isolated agent-browser sessions (separate browser contexts with independent
-    // cookies/localStorage). Window 1 uses the default session; others are created
-    // on demand. This enables multi-user tests and unauthenticated-vs-authenticated
-    // checks without session leakage.
-    const windowSessions = new Map();
-    windowSessions.set(1, opts.session); // Default window uses the main session
-
-    function getSessionForWindow(windowNum) {
-      if (!windowSessions.has(windowNum)) {
-        const newSession = `${opts.session}-w${windowNum}`;
-        windowSessions.set(windowNum, newSession);
-        console.error(`[session] Created isolated session ${newSession} for browser_window=${windowNum}`);
-      }
-      return windowSessions.get(windowNum);
-    }
-
-    // Execute blocks sequentially — skip already-completed blocks (R6)
+    // Execute blocks sequentially — skip already-completed blocks (R6).
+    // windowSessions and getSessionForWindow are hoisted above the try block
+    // so cleanup paths (SIGTERM handler, catch) can iterate them.
     for (let bi = startBlock; bi < blocks.length; bi++) {
       // When continuing, skip blocks already recorded as passed in the loaded log
       if (opts.continueExecId && log.blocks[bi] && log.blocks[bi].status === 'passed') {
@@ -1603,10 +1623,12 @@ async function main() {
           console.error(`[WARN] Block ${bi} failed (non-critical, continuing). ${log.blocks[bi]?.actions?.[0]?.failure?.stdout || ''}`);
           continue;
         }
-        // Critical block failed — release profiles, save log and exit
+        // Critical block failed — capture console, release profiles, close
+        // sessions (kills daemon), save log, and exit.
         log.status = 'failed';
         log.failed_at_block = bi;
         log.finished_at = new Date().toISOString();
+        log.console_errors = await captureConsoleErrors();
 
         await releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles);
         await mcpCall(opts.mcpUrl, opts.token, 'save_execution_log', {
@@ -1616,14 +1638,16 @@ async function main() {
           status: 'failed',
         });
 
-        // Write local log
+        // Write local log (includes console_errors for post-mortem)
         const logPath = `${LOG_FILE_PREFIX}${Date.now()}.json`;
         fs.writeFileSync(logPath, JSON.stringify(log, null, 2));
         console.error(`[FAIL] Block ${bi} failed. Log: ${logPath}`);
-        console.error(`[FAIL] Browser session '${opts.session}' preserved for orchestrator inspection — close manually with: agent-browser close --session ${opts.session}`);
-        // NOTE: Do NOT close agent-browser sessions on critical failure either.
-        // The orchestrator may want to inspect DOM/screenshots/console state
-        // to diagnose the failure. Orchestrator is responsible for cleanup.
+
+        // Close every window session and the daemon. Sessions are only
+        // preserved on exit 42 (agentic pause) where the orchestrator needs
+        // live transient state it can't rebuild. On a hard failure, the
+        // structured_log + console_errors + local JSON log are the record.
+        await closeAllSessions();
         process.exit(1);
       }
     }
@@ -1645,13 +1669,9 @@ async function main() {
     fs.writeFileSync(logPath, JSON.stringify(log, null, 2));
     console.error(`[PASS] All ${blocks.length} blocks passed. Log: ${logPath}`);
 
-    // Release all acquired profiles
+    // Release profiles, close all window sessions (kills daemon).
     await releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles);
-    // Close all browser window sessions
-    for (const [, sess] of windowSessions || []) {
-      await abClose(sess).catch(() => {});
-    }
-    if (!windowSessions || windowSessions.size === 0) await abClose(opts.session).catch(() => {});
+    await closeAllSessions();
 
     process.exit(0);
 
@@ -1660,9 +1680,13 @@ async function main() {
     log.error = err.message;
     log.finished_at = new Date().toISOString();
 
-    // Release profiles and close browser before exit
+    // Best-effort console capture before tearing down — gives the orchestrator
+    // a post-mortem even when the runner crashes mid-execution.
+    try { log.console_errors = await captureConsoleErrors(); } catch { /* best effort */ }
+
+    // Release profiles and close every window session (kills daemon).
     try { await releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles); } catch { /* best effort */ }
-    try { await abClose(opts.session); } catch { /* best effort */ }
+    try { await closeAllSessions(); } catch { /* best effort */ }
 
     // Try to save error log
     try {
