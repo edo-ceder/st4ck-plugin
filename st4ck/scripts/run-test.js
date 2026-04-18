@@ -1371,29 +1371,37 @@ async function main() {
 
   // On normal exit, clean up fixture temp files (profiles released explicitly before each exit point)
   process.on('exit', () => { cleanupFixtures(opts.testCaseId); });
-  process.on('SIGTERM', () => {
-    // Best-effort cleanup (async, may not complete before exit)
-    releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles).catch(() => {});
-    // Close all browser window sessions on signal
-    if (windowSessions && windowSessions.size > 0) {
-      for (const [, sess] of windowSessions) abClose(sess).catch(() => {});
-    } else {
-      abClose(opts.session).catch(() => {});
-    }
+
+  // SIGTERM/SIGINT handler: async cleanup that AWAITS the release HTTP call
+  // before exiting. The previous fire-and-forget pattern (.catch without await)
+  // killed the process before the release request reached the server, leaking
+  // the profile lock for lock_timeout_minutes and cascading into 409s for every
+  // subsequent same-role acquire.
+  let signalHandled = false;
+  async function handleSignal(sig) {
+    if (signalHandled) return;
+    signalHandled = true;
+    try {
+      // Bounded wait — 5s is plenty for a single HTTP release; refusing to exit
+      // beyond that would risk zombie processes. 5s is also the typical cron/CI
+      // grace period before SIGKILL.
+      await Promise.race([
+        releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles),
+        new Promise((resolve) => setTimeout(resolve, 5000)),
+      ]);
+    } catch { /* best effort */ }
+    try {
+      if (windowSessions && windowSessions.size > 0) {
+        for (const [, sess] of windowSessions) await abClose(sess).catch(() => {});
+      } else {
+        await abClose(opts.session).catch(() => {});
+      }
+    } catch { /* best effort */ }
     cleanupFixtures(opts.testCaseId);
-    process.exit(1);
-  });
-  process.on('SIGINT', () => {
-    releaseAllProfiles(opts.mcpUrl, opts.token, acquiredProfiles).catch(() => {});
-    // Close all browser window sessions on signal
-    if (windowSessions && windowSessions.size > 0) {
-      for (const [, sess] of windowSessions) abClose(sess).catch(() => {});
-    } else {
-      abClose(opts.session).catch(() => {});
-    }
-    cleanupFixtures(opts.testCaseId);
-    process.exit(1);
-  });
+    process.exit(sig === 'SIGINT' ? 130 : 143);
+  }
+  process.on('SIGTERM', () => { handleSignal('SIGTERM'); });
+  process.on('SIGINT', () => { handleSignal('SIGINT'); });
 
   try {
     // Get test case details via MCP
