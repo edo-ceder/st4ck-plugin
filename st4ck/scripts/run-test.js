@@ -534,9 +534,12 @@ async function releaseAllProfiles(mcpUrl, token, acquiredProfiles) {
 /**
  * Substitute profile credential placeholders in eval step content.
  * Handles {{profile.email}}, {{profile.password}}, {{profile.id}}, {{profile.display}},
- * plus single-brace {profile_user_id} for backend SQL blocks that reference
- * the project's auth user id (e.g., Plenty's auth.users.id populated on
- * test_user_profiles.project_user_id).
+ * plus single-brace backend SQL placeholders:
+ *   {profile_email}    — the profile's email; join via auth.users to get the
+ *                        target-project auth user id. Preferred for backend blocks.
+ *   {profile_user_id}  — legacy: value of test_user_profiles.project_user_id.
+ *                        FKs to st4ck's project_users.id, so this is NOT the
+ *                        target project's auth.users.id. Kept for back-compat.
  */
 function substituteProfileCredentials(step, profile) {
   if (!profile) return step;
@@ -549,6 +552,7 @@ function substituteProfileCredentials(step, profile) {
     .replaceAll('{{profile.password}}', esc(profile.password || profile.decrypted_password || ''))
     .replaceAll('{{profile.id}}', esc(profile.profile_id || ''))
     .replaceAll('{{profile.display}}', esc(profile.profile_display || profile.profile_name || ''))
+    .replaceAll('{profile_email}', esc(profile.email || ''))
     .replaceAll('{profile_user_id}', esc(profile.project_user_id || ''));
   if (replaced === stepStr) return step;
   return JSON.parse(replaced);
