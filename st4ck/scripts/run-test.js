@@ -293,30 +293,56 @@ async function abNavigate(session, url, opts = {}) {
 }
 
 async function abClose(session) {
-  // 1. Graceful close (closes browser, may or may not kill daemon process).
-  const result = await abExec(session, ['close']);
+  // Order is load-bearing. Earlier version called `agent-browser close` first,
+  // then read the pidfile — but `agent-browser close` can delete the pidfile
+  // itself, leaving us unable to find the PID and hard-kill the daemon if its
+  // graceful-close hung or half-failed. That leaked one orphan daemon per run.
+  //
+  // New order:
+  //   (1) snapshot the daemon PID from the pidfile BEFORE anything touches it
+  //   (2) ask the daemon to close gracefully via the CLI
+  //   (3) verify the snapshotted PID is actually dead; SIGTERM + brief wait +
+  //       SIGKILL if it's still alive
+  //   (4) remove leftover session files (idempotent — best effort)
+  const home = process.env.HOME || require('node:os').homedir();
+  const dir = path.join(home, '.agent-browser');
+  const pidFile = path.join(dir, `${session}.pid`);
+  const sockFile = path.join(dir, `${session}.sock`);
+  const engineFile = path.join(dir, `${session}.engine`);
+  const streamFile = path.join(dir, `${session}.stream`);
 
-  // 2. Kill the daemon process and scrub its pid/sock files. agent-browser
-  //    leaves ~/.agent-browser/<session>.pid and .sock behind on exit; without
-  //    this step, running many tests leaks one daemon per run indefinitely.
+  // (1) Snapshot PID before the graceful close can delete the pidfile.
+  let daemonPid = null;
   try {
-    const home = process.env.HOME || require('node:os').homedir();
-    const dir = path.join(home, '.agent-browser');
-    const pidFile = path.join(dir, `${session}.pid`);
-    const sockFile = path.join(dir, `${session}.sock`);
     if (fs.existsSync(pidFile)) {
-      const pid = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
-      if (Number.isInteger(pid) && pid > 0) {
-        try { process.kill(pid, 'SIGTERM'); } catch { /* already dead */ }
-        await new Promise(r => setTimeout(r, 200));
-        try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch { /* dead */ }
-      }
-      fs.unlinkSync(pidFile);
+      const raw = parseInt(fs.readFileSync(pidFile, 'utf8').trim(), 10);
+      if (Number.isInteger(raw) && raw > 0) daemonPid = raw;
     }
-    if (fs.existsSync(sockFile)) fs.unlinkSync(sockFile);
-    const engineFile = path.join(dir, `${session}.engine`);
-    if (fs.existsSync(engineFile)) fs.unlinkSync(engineFile);
-  } catch { /* best-effort */ }
+  } catch { /* unreadable — fall through without a PID */ }
+
+  // (2) Graceful close via the CLI. Best effort — ignore its exit code.
+  let result;
+  try { result = await abExec(session, ['close']); }
+  catch (err) { result = { ok: false, stderr: err?.message || String(err) }; }
+
+  // (3) If we captured a PID, make sure it's dead. process.kill(pid, 0) is
+  // a liveness probe; throws if the PID is gone.
+  if (daemonPid !== null) {
+    try {
+      process.kill(daemonPid, 0); // still alive → ask it to exit
+      try { process.kill(daemonPid, 'SIGTERM'); } catch { /* race */ }
+      await new Promise(r => setTimeout(r, 200));
+      try {
+        process.kill(daemonPid, 0); // still alive? force-kill.
+        try { process.kill(daemonPid, 'SIGKILL'); } catch { /* race */ }
+      } catch { /* already dead — good */ }
+    } catch { /* already dead — good */ }
+  }
+
+  // (4) Scrub leftover session files.
+  for (const f of [pidFile, sockFile, engineFile, streamFile]) {
+    try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
+  }
 
   return result;
 }
