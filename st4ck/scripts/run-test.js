@@ -321,71 +321,38 @@ async function abClose(session) {
   return result;
 }
 
-// Guarantee a pristine agent-browser state before a run starts. Kills every
-// live agent-browser daemon and every detached Chrome process launched from
-// an agent-browser user-data-dir, then removes all session files under
-// ~/.agent-browser. This is aggressive on purpose: the earlier sweep only
-// cleaned files for dead daemons, which left *live* leftover daemons
-// running in stale modes (e.g. "--headed ignored: daemon already running"
-// bug). Every run starts fresh; next run's daemon is spawned with the
-// current --headed / --headless options.
-function resetAgentBrowserState() {
-  const home = process.env.HOME || require('node:os').homedir();
-  const dir = path.join(home, '.agent-browser');
-
-  // 1) Kill live daemon PIDs recorded in session pidfiles.
-  let killedDaemons = 0;
-  let staleFiles = 0;
+// Garbage-collect agent-browser session files whose daemon is no longer alive.
+// Runs once at script startup. Touches NO live processes — it only unlinks
+// pid/sock/engine files that point to dead PIDs, so parallel agent-browser
+// runs on the same machine are unaffected. Anything still alive stays alive.
+function sweepDeadAgentBrowserSessions() {
   try {
-    if (fs.existsSync(dir)) {
-      const pidFiles = fs.readdirSync(dir).filter(f => f.endsWith('.pid'));
-      for (const pidFile of pidFiles) {
-        const full = path.join(dir, pidFile);
-        try {
-          const pid = parseInt(fs.readFileSync(full, 'utf8').trim(), 10);
-          if (Number.isInteger(pid) && pid > 0) {
-            try { process.kill(pid, 'SIGTERM'); killedDaemons++; } catch { /* already dead */ }
-          }
-        } catch { /* unreadable */ }
-      }
-    }
-  } catch { /* best effort */ }
-
-  // 2) Kill any remaining agent-browser daemons and Chrome procs by pattern.
-  // Covers daemons not tracked by a pidfile (crash-leftovers) and the Chrome
-  // subprocesses agent-browser launches with user-data-dir=...agent-browser-chrome-...
-  try {
-    const { execFileSync } = require('node:child_process');
-    const patterns = ['agent-browser-darwin-arm64', 'agent-browser-darwin-x64', 'agent-browser-chrome-'];
-    for (const pat of patterns) {
-      try { execFileSync('pkill', ['-TERM', '-f', pat], { stdio: 'ignore' }); } catch { /* nothing matched, or pkill missing */ }
-    }
-  } catch { /* best effort */ }
-
-  // 3) Brief wait, then SIGKILL anything that didn't exit on SIGTERM.
-  try {
-    const { execFileSync } = require('node:child_process');
-    try { execFileSync('sleep', ['0.25'], { stdio: 'ignore' }); } catch { /* ignore */ }
-    for (const pat of ['agent-browser-darwin-arm64', 'agent-browser-darwin-x64', 'agent-browser-chrome-']) {
-      try { execFileSync('pkill', ['-KILL', '-f', pat], { stdio: 'ignore' }); } catch { /* nothing left */ }
-    }
-  } catch { /* best effort */ }
-
-  // 4) Remove every session file. Nothing in ~/.agent-browser/ should survive
-  // into a fresh run — our new daemon will recreate what it needs.
-  try {
-    if (fs.existsSync(dir)) {
-      for (const f of fs.readdirSync(dir)) {
-        if (['.pid', '.sock', '.engine', '.stream'].some(ext => f.endsWith(ext))) {
-          try { fs.unlinkSync(path.join(dir, f)); staleFiles++; } catch { /* ignore */ }
+    const home = process.env.HOME || require('node:os').homedir();
+    const dir = path.join(home, '.agent-browser');
+    if (!fs.existsSync(dir)) return;
+    const files = fs.readdirSync(dir);
+    const pidFiles = files.filter(f => f.endsWith('.pid'));
+    let swept = 0;
+    for (const pidFile of pidFiles) {
+      const full = path.join(dir, pidFile);
+      let alive = false;
+      try {
+        const pid = parseInt(fs.readFileSync(full, 'utf8').trim(), 10);
+        if (Number.isInteger(pid) && pid > 0) {
+          try { process.kill(pid, 0); alive = true; } catch { alive = false; }
         }
+      } catch { /* unreadable, treat as dead */ }
+      if (!alive) {
+        const base = pidFile.slice(0, -4);
+        for (const ext of ['.pid', '.sock', '.engine', '.stream']) {
+          const f = path.join(dir, base + ext);
+          try { if (fs.existsSync(f)) fs.unlinkSync(f); } catch { /* ignore */ }
+        }
+        swept++;
       }
     }
-  } catch { /* best effort */ }
-
-  if (killedDaemons > 0 || staleFiles > 0) {
-    console.error(`[cleanup] reset agent-browser state: killed ${killedDaemons} tracked daemon(s), removed ${staleFiles} session file(s)`);
-  }
+    if (swept > 0) console.error(`[cleanup] swept ${swept} stale agent-browser session file(s)`);
+  } catch { /* best-effort */ }
 }
 
 async function abSnapshot(session) {
@@ -1387,7 +1354,7 @@ async function executeBlock(session, block, blockIndex, mcpUrl, token, headless,
 
 async function main() {
   checkNodeVersion();
-  resetAgentBrowserState();
+  sweepDeadAgentBrowserSessions();
   const opts = parseArgs();
 
   const log = {
