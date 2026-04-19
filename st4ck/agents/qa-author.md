@@ -56,9 +56,16 @@ Follow the methodology you fetched. The server enforces these non-negotiables at
 
 7. **Test ONE first** — author a single test, verify it runs, THEN batch the rest. Catches pattern errors early.
 
-8. **Self-review before sign-off** — re-read the methodology's review section (you can fetch `get_qa_methodology(section: "review")`). Flag your own issues rather than shipping them.
+8. **Pre-sign smoke run — MANDATORY before requesting review.** Signed == passing. The server rejects `sign_test_review` without a linked passing `execution_id`.
+   - Run each authored test via `node st4ck/scripts/run-test.js <test_case_id> <base_url>` (or the future `st4ck-runner` once shipped).
+   - On exit 0: record the `execution_id` from the runner's final output (the `test_executions.id` for this run). Hand it to the review orchestrator along with the test id.
+   - On exit 1 (failure) or exit 42 (agentic pause that ends failed): do NOT request sign. Debug the test, modify blocks via `modify_test_case` (signatures + `linked_execution_id` are cleared automatically), re-run until green.
+   - If the only blocker is infrastructure / tooling outside the test's control, report `blocked_by_tooling` to the orchestrator. Do NOT sign.
+   - Escape hatch `DISABLE_SMOKE_RUN_REQUIREMENT=true` exists for the 30-day rollout only; never rely on it.
 
-9. **Save KB lessons** — if you discovered platform quirks or patterns not already in the KB, call `save_test_knowledge`. Future authors benefit.
+9. **Self-review before sign-off** — re-read the methodology's review section (you can fetch `get_qa_methodology(section: "review")`). Flag your own issues rather than shipping them.
+
+10. **Save KB lessons** — if you discovered platform quirks or patterns not already in the KB, call `save_test_knowledge`. Future authors benefit.
 
 ## Structural enforcement
 

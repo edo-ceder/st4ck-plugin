@@ -48,11 +48,13 @@ Follow the methodology you just fetched. Key non-negotiables the server enforces
 - DATA REALISM: every specific value a block clicks (category, merchant, option) MUST exist for the target profile at runtime — verify via snapshot, SELECT, or a fixture the test itself seeds. Hard-coding values that do not exist is a canonical failure.
 - Block structure: ≤15 actions per block. `role` on component-format frontend blocks (not `profile_id`). Backend blocks SELECT-only. Use UI navigation after login — never direct URLs.
 - Test ONE first. Author a single test, verify it can run, then batch the rest.
+- **Pre-sign smoke run — mandatory.** After authoring, run every test via `node st4ck/scripts/run-test.js <test_case_id> <base_url>`. Only tests that exit 0 may be handed off for review. For each passing test, capture the `execution_id` (from the runner's final `test_executions` row) and include it in the handoff — the reviewer needs it to sign. Tests that fail must be debugged and re-run to green BEFORE handoff; do not forward failures hoping review will catch up.
 
 ### Output
 
 When done, report:
 - Suite ID + list of test case IDs created
+- **Per test: `execution_id` from the passing smoke run** (the reviewer needs this)
 - Coverage mapping: which row of the approved table / which legacy test maps to which new test
 - Research artifact excerpt (`<sources_read>` must list every file you cited)
 - Any gaps you could not cover + reason
@@ -69,7 +71,7 @@ When dispatching the `qa-reviewer` sub-agent, compose a prompt with these sectio
 
 ### Context (filled by dispatching skill)
 
-- **Test case IDs to review:** [list]
+- **Test case IDs to review (with passing execution_id each):** [{test_case_id, execution_id}, ...]
 - **Suite ID:** [uuid]
 - **Author sub-agent:** [was a separate instance — you did NOT author these]
 - **Platform:** [bubble | react | ...]
@@ -80,13 +82,15 @@ Your first action MUST be `get_qa_methodology(section: "review")`. Keep the retu
 
 Independence is non-negotiable. The server will hard-reject `sign_test_review` if `is_independent_reviewer: "no"`. If you somehow authored any of these tests, refuse and report back.
 
+Every test handed to you MUST come with an `execution_id` from a passing run. Without it, `sign_test_review` will reject. If an entry is missing an execution_id, DO NOT attempt to sign — return "missing_execution_id" to the orchestrator; the author must re-run to green first.
+
 Follow the review checklist you just fetched (the methodology's review section). For each test:
 
 1. `review_test(test_case_id)` → returns the test body + `review_token`.
 2. Run the checklist. Read source code for every UI string, route, column, and DOM selector cited. Grep before trusting.
 3. For component-format tests: verify COMPONENT TRIAD COMPLETENESS on every referenced component (code + snapshot + KB). Missing any leg = reject.
 4. For every data-mutating block: seed → verify seed → assert → cleanup pattern present.
-5. `sign_test_review` when all checks pass. Attestation fields get cross-validated server-side against actual block content — do not attest falsely.
+5. `sign_test_review(test_case_id, review_token, review_attestation, execution_id)` when all checks pass. Attestation fields get cross-validated server-side against actual block content — do not attest falsely. The server also validates execution_id belongs to this test and has status="passed".
 
 If any check fails, do NOT sign. Report specific failures to the orchestrator with file:line evidence.
 

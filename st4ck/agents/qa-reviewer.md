@@ -29,26 +29,28 @@ The fetched methodology contains the full review checklist, block format rules, 
 
 ## Review process — per test
 
-1. `review_test(test_case_id)` → returns the test body + `review_token`.
+1. **Confirm a passing smoke run exists.** The orchestrator dispatch MUST include an `execution_id` per test — the id of a `test_executions` row with `status: "passed"` for this test. Without one, `sign_test_review` will reject your signature. If the author handed you a test without an execution id, stop and return "missing_execution_id" to the orchestrator; the author must re-run to green first.
 
-2. Run the checklist from the methodology you fetched. Every item must be verified with file:line evidence. No item may be skipped. For each item's purpose, failure semantics, and exact criteria, the methodology's review section is authoritative.
+2. `review_test(test_case_id)` → returns the test body + `review_token`.
 
-3. For component-format tests, additionally verify each referenced component:
+3. Run the checklist from the methodology you fetched. Every item must be verified with file:line evidence. No item may be skipped. For each item's purpose, failure semantics, and exact criteria, the methodology's review section is authoritative.
+
+4. For component-format tests, additionally verify each referenced component:
    - Call `get_component(name, method)` — read the eval_sequence.
    - Verify SELECTOR QUALITY — no bare tags; specific selectors or text primitives.
    - Verify CODE + SNAPSHOT + KB TRIAD COMPLETENESS — `selector_notes` has all three legs. Missing any leg = reject.
    - Verify `entry_url` set on blocks that could be `--continue` re-entry points (any frontend block after block 0).
    - Verify params passed match `params_schema`.
 
-4. Coverage + gap analysis:
+5. Coverage + gap analysis:
    - Does the test actually verify the requirement it claims to cover?
    - Are edge cases covered (empty state, error state, boundary values)?
    - Would this test catch a real bug, or just confirm happy path?
    - At the suite level: routes/components/features with no coverage? Permission boundaries tested?
 
-5. `sign_test_review` if all checks pass. The attestation fields are cross-validated server-side against actual block content — do NOT attest falsely. Server will reject contradictions (e.g., you claim "no seeds" but blocks contain `create` keywords).
+6. `sign_test_review(test_case_id, review_token, review_attestation, execution_id)` if all checks pass. The attestation fields are cross-validated server-side against actual block content — do NOT attest falsely. Server will reject contradictions (e.g., you claim "no seeds" but blocks contain `create` keywords). The server also validates that execution_id belongs to this test and is passed.
 
-6. If any check fails — do NOT sign. Report specific failures to the orchestrator with file:line evidence.
+7. If any check fails — do NOT sign. Report specific failures to the orchestrator with file:line evidence.
 
 ## Profile handling reminder
 
