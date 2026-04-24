@@ -1739,4 +1739,42 @@ async function main() {
   }
 }
 
-main();
+// ─── Phase 1.12: flag-aware dispatcher (2026-04-24) ─────────────────────
+// Before running the legacy body, check the test's `use_new_runner` flag.
+// If true, exec run-test-next.js (which dispatches to st4ck-runner). If the
+// flag is false or the lookup fails, fall through to the legacy main().
+//
+// Default is false so shipping this change doesn't alter any existing test.
+// Phase 6 flips the flag per-test as re-author to primitive-direct completes.
+
+async function dispatchOrRunLegacy() {
+  const opts = parseArgs();
+  try {
+    const details = await mcpCall(opts.mcpUrl, opts.token, 'get_test_details', {
+      test_case_id: opts.testCaseId,
+    });
+    const data = details?.data || details;
+    if (data && data.use_new_runner === true) {
+      console.error('[dispatch] use_new_runner=true — exec run-test-next.js');
+      const shimPath = path.join(__dirname, 'run-test-next.js');
+      const child = spawn('node', [shimPath, ...process.argv.slice(2)], {
+        stdio: 'inherit',
+        env: process.env,
+      });
+      child.on('exit', (code, sig) => {
+        if (sig) { try { process.kill(process.pid, sig); } catch { process.exit(1); } return; }
+        process.exit(code == null ? 0 : code);
+      });
+      child.on('error', (err) => {
+        console.error(`[dispatch] spawn error: ${err.message}`);
+        process.exit(2);
+      });
+      return;
+    }
+  } catch (err) {
+    console.error(`[dispatch] use_new_runner lookup failed: ${err.message} — falling through to legacy`);
+  }
+  main();
+}
+
+dispatchOrRunLegacy();
