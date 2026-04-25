@@ -1,17 +1,27 @@
 ---
 name: qa-testing-regression
-description: Use this skill when the user wants to author regression tests that protect shipped behavior. Triggers on phrases like "create regression tests for", "protect this module", "regression coverage for", "add regression suite". This skill orchestrates exploration, scope interview, qa-author dispatch, qa-reviewer dispatch, and coverage report for regression authoring.
+description: Use this skill when the user wants to author regression tests that protect shipped behavior. Triggers on phrases like "create regression tests for", "protect this module", "regression coverage for", "add regression suite". Per Phase 4 §4.2 the primary dispatch path is `authoring-lead` (Agent Teams pattern); single-agent `qa-author` is the backwards-compat fallback for one-component-scope tests.
 ---
 
 # QA Testing — Regression Authoring Journey
 
 You are orchestrating regression test authoring. Regression tests protect shipped behavior — NOT new features (use `qa-testing-version` for in-development work).
 
+## Phase 4 §4.2 — primary dispatch is `authoring-lead`
+
+Per the LLM-native platform plan, regression authoring scales through the **Agent Teams pattern**: this skill dispatches a single `authoring-lead` per scope, which then dispatches `component-author` and `test-author` teammates per candidate. Lead coordinates via durable state (`dev_tasks`, `test_coverage_events`); teammates run in isolated context windows. Token target ≤10k per fresh test end-to-end.
+
+Use single-agent `qa-author` only as a fallback for tiny scopes (one component, one assertion) where the team split is overkill — see `qa-author.md`.
+
+## Phase 5 §5.1 — intent_sources required
+
+Every test you cause to be authored MUST land with `intent_sources` populated (≥1 entry). The `authoring-lead` derives intent from your dispatch prompt — pass enough context (PRD node IDs, spec section IDs, dev_task IDs, or a free-text description) for the lead to set this. The reviewer's 13th attestation `intent_alignment` will block sign if intent_sources is empty or merely rubber-stamps current code.
+
 ## Common prelude — server is the single source of truth
 
 - All QA rules live on the server in `backend/src/mcp/v3/methodology.ts`. Do NOT repeat rule text here — load it via `get_qa_methodology(section)`.
 - Your `methodology_key` from `get_qa_methodology` has a 2-hour TTL. Re-fetch if expired.
-- Sub-agents (`qa-author`, `qa-reviewer`) fetch methodology themselves on dispatch — you don't pass it to them. You dispatch with context + intent; they load rules and attest server-side.
+- Sub-agents (`authoring-lead`, `component-author`, `test-author`, `qa-author`, `qa-reviewer`) fetch methodology themselves on dispatch — you don't pass it to them. You dispatch with context + intent; they load rules and attest server-side.
 
 ## Your journey
 

@@ -93,9 +93,12 @@ function parseArgs() {
     process.exit(1);
   }
 
-  // Derive V1 data URL from V3 QA URL: /mcp/v3/ → /mcp/
+  // Derive V1 data URL from any versioned QA URL: /mcp/v<N>/ → /mcp/
+  // Generalised regex catches V3 → V4 (and future versions) so backend SQL
+  // blocks always route to the V1 data MCP regardless of which QA-server
+  // version the user has configured. Fix per plan §16 (B4 from round-3 audit).
   if (!opts.mcpDataUrl) {
-    opts.mcpDataUrl = opts.mcpUrl.replace(/\/mcp\/v3\/?$/, '/mcp/');
+    opts.mcpDataUrl = opts.mcpUrl.replace(/\/mcp\/v\d+\/?$/, '/mcp/');
   }
 
   return opts;

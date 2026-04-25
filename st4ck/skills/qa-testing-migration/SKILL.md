@@ -1,176 +1,83 @@
 ---
 name: qa-testing-migration
-description: Use this skill when the user wants to convert legacy agentic-format tests (`{action, expected}` blocks) to the deterministic component format (`{component, method, params}`). Triggers on phrases like "migrate these tests", "convert to component format", "move off agentic blocks", "modernize the test suite", "convert legacy tests". Creates missing components, rewrites blocks, human-gates each test before save.
+description: Router skill that classifies legacy tests by migration shape (agentic, components_v1, components_v2, mixed) and dispatches to the correct path skill. Triggers on "migrate these tests", "convert to component format", "modernize tests", "upgrade components". Decides Path A (heavy, LLM-driven) vs Path B (light, mechanical) per test.
 ---
 
-# QA Testing — Migration Journey
+# QA Testing — Migration Router
 
-You are converting legacy-format tests to the component-based deterministic format. The goal is executable-by-runner tests with zero agentic pauses unless genuine runtime decision-making is required.
+You are the **router** that decides HOW each test gets migrated. You don't migrate tests yourself — you classify them, then activate the correct path skill per group.
 
-## Common prelude — server is the single source of truth
+## Why two paths?
 
-- All QA rules live on the server in `backend/src/mcp/v3/methodology.ts`. Do NOT repeat rule text here — load via `get_qa_methodology(section)`.
-- Sub-agents fetch their own methodology on dispatch. You dispatch with intent = migration + scope = specific test IDs.
-- `methodology_key` TTL 2 hours.
+Per plan §13.2 there are two genuinely different migration jobs hiding inside "migrate these tests":
 
-## Why migrate?
+| Shape | What it is | Path | Cost |
+|---|---|---|---|
+| **agentic** | Every action is `{action, expected}` (legacy free-text). Server has no idea what the test does — only the agent that runs it. | **Path A — heavy** (`qa-testing-migrate-agentic-to-v2`) | ~10k tokens/test (full Agent Teams authoring cycle) |
+| **components_v1** | Only `{component, method}` actions, but components use legacy `eval_sequence` (not `sequence`). Mostly metadata + structural upgrade. | **Path B — light** (`qa-testing-upgrade-components-v1-to-v2`) | ~2k tokens/component (mechanical + KB search) |
+| **components_v2** | Already on `sequence`. No migration needed. | — | 0 |
+| **mixed** | Both shapes coexist in one test. | **Path A — heavy** (LLM has to disentangle) | ~10k tokens/test |
+| **empty** | No actions. | — | Skip; flag the test as broken. |
 
-Legacy `{action, expected}` blocks require the sub-agent to reason at runtime — they are slow, token-expensive, and non-reproducible. Component-format blocks are deterministic: the runner (`run-test.js`) executes them with zero LLM calls. Migration is what moves a suite from "LLM-driven" to "scripted."
+If you blindly run Path A on a Shape-B test you waste 5× the tokens. If you run Path B on a Shape-A test it just fails. The router exists so you never make that mistake.
 
-## Your journey
+## First actions — mandatory in this order
 
-### Step 1 — Inventory
+1. **`get_qa_methodology(section: "process")`** — orchestration rules.
 
-From the user's input (`$ARGUMENTS`):
+2. **Classify the scope** — call `classify_test_migration_shape({suite_id})` (or `{test_id}` for a single test, or `{scope: "project"}` for the whole project). The MCP tool returns:
+   - per-test: `{test_id, test_name, suite_id, shape}`
+   - aggregate: `{counts, total, estimated_token_budget, avg_components_per_test}`
 
-| Input | Behavior |
+3. **Show the user the classification + budget** — *"Suite has X agentic, Y components_v1, Z components_v2, W mixed, V empty. Estimated budget: ~$N. Proceed?"*. Wait for human approval before fanning out.
+
+## Dispatch
+
+Per the classification:
+
+| Group | Activate skill |
 |---|---|
-| Suite ID (UUID) | Migrate all tests in that suite |
-| Suite name | `get_test_suites` → find matching |
-| Nothing | List suites containing legacy tests + ask user to pick |
+| `agentic` + `mixed` | `qa-testing-migrate-agentic-to-v2` (Path A) |
+| `components_v1` | `qa-testing-upgrade-components-v1-to-v2` (Path B) |
+| `components_v2` | report as already migrated; skip |
+| `empty` | report as broken; do not migrate |
 
-Then:
+Pass the matching test IDs to each skill.
 
-```
-get_test_cases(suite_id)     # list tests
-get_components()             # existing components inventory
-```
+## Failure cascade — Path B may demote to Path A
 
-Classify each test:
-- **Fully legacy** — every action is `{action, expected}`
-- **Hybrid** — mix of legacy + component actions (migrate only the legacy ones)
-- **Already component** — skip
+Path B can encounter cases it cannot handle mechanically:
+- Component uses an exotic eval that doesn't map to a primitive
+- Component contains a persisted snapshot ref that the server now rejects
+- Component cites an unreachable git path
+- TRIAD enforcement fails on save
 
-### Step 2 — Present inventory + HUMAN GATE
+In each case Path B returns a `demote_to_path_a` verdict for that test. The router catches it and re-dispatches the test through Path A.
 
-```
-## Migration Inventory: [Suite Name]
+## Order
 
-### Tests to migrate: [N] / [total]
+Author for parallelism but **do not auto-fan-out** — the user must approve the budget after classification. After approval, run Path A and Path B in parallel (they don't share state); within each path, tests can also run in parallel up to the per-path concurrency budget.
 
-| Test | Legacy blocks | Expected components to create |
-|------|---------------|-------------------------------|
-| [name] | [N] | [login.default, expense.create, ...] |
+## Don't
 
-### Existing components to reuse: [list]
-### Components to create: [estimated list]
-### Tests to skip (already migrated): [N]
+- Don't skip the classification. The whole point of the router is the classification.
+- Don't override the human gate. If they say "no, hold on the agentic ones," respect it.
+- Don't fold both paths into a single LLM dispatch. The whole reason Path B exists is to NOT pay LLM costs for tests that don't need them.
+- Don't run Path A on a Shape-B test "because it's safer." Path A on Shape-B does the same work the agent already did — wasted spend.
 
-Proceed with migration?
-```
+## Return to the user
 
-**STOP. Wait for user confirmation.**
-
-### Step 3 — Load the KB
+A summary table:
 
 ```
-search_test_knowledge(platform)
+Suite: <name>
+  Path A migrations: M signed / N total
+  Path B upgrades:   K signed / L total
+  Path B → A demotions: D
+  Skipped (already v2):  S
+  Skipped (empty):       E
+  Estimated total spend: $X
+  Actual spend:          $Y
 ```
 
-Platform quirks are load-bearing for migration — Bubble needs input waits, React portals need specific selectors, etc. Forward these lessons to the sub-agent.
-
-### Step 4 — Dispatch qa-author (migration intent)
-
-Use `qa-author dispatch contract`. Fill CONTEXT fields:
-- **Intent:** migration
-- **Scope:** the list of legacy test IDs (pass each verbatim)
-- **Source priority:** existing legacy blocks + code (the blocks tell you the INTENT; the code tells you the real DOM)
-- **Approved coverage:** not applicable — coverage is already defined by the existing tests. The contract is "preserve each test's intent, convert the form."
-- Any human notes about specific blocks that MUST stay agentic (rare — user must justify)
-
-Copy INSTRUCTIONS block verbatim.
-
-Sub-agent will:
-1. Read the legacy blocks
-2. Search KB for platform quirks
-3. `get_components()` to inventory reusable
-4. For missing components: read actual source, test with agent-browser, complete CODE + SNAPSHOT + KB triad, `save_component`
-5. Rewrite blocks: `{action, expected}` → `{component, method, params}`. Replace `profile_id` with `role`. Preserve `expected_outcome`.
-6. **Challenge every action** — date pickers, edit dialogs, Radix dropdowns are ALL scriptable as components. Agentic blocks are a LAST RESORT only for genuine runtime decision-making (branching on unpredictable state, visual judgment, dynamic query construction).
-
-### Step 5 — Per-test HUMAN GATE
-
-For EACH migrated test, the sub-agent should NOT auto-save. Instead, it returns the migration proposal. You present:
-
-```
-## Test: [test_name]
-
-### Block 1 (frontend)
-BEFORE:
-  profile_id: "abc-123"
-  actions:
-    1. { action: "Navigate to login page", expected: "Login form appears" }
-    2. { action: "Enter email test@example.com", expected: "Email field filled" }
-    3. { action: "Click 'Login'", expected: "Dashboard loads" }
-
-AFTER:
-  role: "admin"
-  actions:
-    1. { component: "login", method: "default", params: { role: "admin" } }
-  expected_outcome: "User logged in to dashboard"
-
-Components created for this block: login.default (new)
-Triad completeness: [✓ / missing leg — details]
-
-Approve? [y / edit / skip]
-```
-
-**STOP per test. Wait for user.**
-
-### Step 6 — Save approved migrations
-
-After user approves each test:
-
-```
-modify_test_case(test_case_id, scenario_blocks: [...])
-```
-
-Server clears signatures automatically (block change = re-review required).
-
-### Step 7 — Dispatch qa-reviewer (INDEPENDENT)
-
-Use `qa-reviewer dispatch contract`. Reviewer ensures:
-- Every new component passes SELECTOR QUALITY + TRIAD COMPLETENESS
-- Test intent preserved (same behavior tested)
-- Any remaining agentic blocks have genuine justification (`agentic_justification` attestation)
-
-Re-dispatch author if issues. Loop until signed.
-
-### Step 8 — Run migrated tests
-
-Trigger `/st4ck:regression-run` or `/st4ck:st4ck-run` per test.
-
-A migrated test should execute with **zero agentic pauses** unless you explicitly approved one. An agentic pause in a migrated test = migration is incomplete. Re-scope and re-migrate the offending block.
-
-### Step 9 — Report
-
-```
-## Migration Complete: [Suite Name]
-
-### Migrated: [N / total]
-| Test | Components created | Agentic blocks remaining | Signed |
-
-### New components in library
-[list with triad completeness]
-
-### Deferred agentic blocks
-[blocks that must remain agentic — with human-approved justification]
-
-### Follow-up
-[any component that couldn't be built deterministically — KB lesson saved]
-```
-
----
-
-## Anti-patterns
-
-- **Don't mark blocks agentic to skip work.** "Complex UI" is NOT valid justification. Edit dialogs, date pickers, Radix dropdowns are all scriptable.
-- **Don't skip KB save.** Every new component pattern you figure out should become a KB entry. The next migration benefits.
-- **Don't migrate without reading the legacy block carefully.** The legacy action text is the INTENT — preserve it. `modify_test_case` preserves `expected_outcome`; make sure the new block actually achieves that outcome.
-- **Don't batch-save without per-test approval.** User gates every test. No exceptions.
-
----
-
-## Dispatch contracts
-
-@${CLAUDE_PLUGIN_ROOT}/shared/qa-dispatch-contracts.md
+Plus: per-test verdict with link to the test in the st4ck UI.

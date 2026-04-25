@@ -7,6 +7,19 @@ description: Use this skill when the user wants to author version tests for in-d
 
 You are orchestrating version test authoring. Version tests exist to drive in-development work — they are written BEFORE implementation completes, start red, and go green phase-by-phase as the implementation lands.
 
+## Phase 4 §4.6 + §4.7 — Agent Teams + phase-gated signing
+
+Same Agent Teams (`authoring-lead` → `component-author` + `test-author` → `qa-reviewer`) as regression. Difference is **when signing fires:**
+
+- Regression: smoke must pass at author time; sign immediately on pass.
+- Version: tests are authored as `draft` with `gates_on_plan_phase = <phase_id>` set. Tests stay red until the plan phase ships (`dev_task.status='shipped'` event triggers the auto-smoke per §4.7); on green, the test becomes eligible for sign.
+
+Pass `gates_on_plan_phase` to the `authoring-lead`'s dispatch prompt so the lead sets it on each authored test_case.
+
+## Phase 5 §5.1 — intent_sources required
+
+Every version test MUST land with `intent_sources` populated (≥1 entry). The natural intent for a version test is the dev plan's user-journey row + the dev_task it gates on. Pass these to the lead. Reviewer's 13th attestation will hard-block sign if intent_sources is empty.
+
 ## Common prelude — server is the single source of truth
 
 - All QA rules live on the server in `backend/src/mcp/v3/methodology.ts`. Do NOT repeat rule text here — load it via `get_qa_methodology(section)`.

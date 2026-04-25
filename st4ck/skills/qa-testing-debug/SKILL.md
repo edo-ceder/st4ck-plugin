@@ -7,6 +7,27 @@ description: Use this skill when a test or component has FAILED and needs diagno
 
 You are diagnosing a test failure. A test run has failed; your job is to find the root cause, propose a minimal fix, and drive the fix to green — without expanding scope.
 
+## Phase 5 error class taxonomy
+
+The runner's structured_log carries an `error.class` per failed primitive (per `backend/src/mcp/v3/methodology.ts` § block_format) plus the new Phase 3.x IPC primitives. Use the class to route diagnosis:
+
+| error.class | Likely root cause | First diagnostic |
+|---|---|---|
+| `element_not_found` | Selector drift (testid renamed, role+name changed) | `session.snapshot()` against the current page; compare to component's `selector_notes.snapshot_excerpt` |
+| `element_ambiguous` | Multiple matches; needs scope | Re-resolve with stricter scope (`scope: 'dialog'` or `scope: by_testid(...)`) |
+| `element_not_actionable` | Element exists but blocked (covered, disabled, hidden) | Check for modal overlay, loading spinner, `pointer-events:none`. Add `wait_until` before action. |
+| `timeout` | Operation exceeded timeout without actionability error | Raise `opts.timeout_ms`, add prior `wait_until` for the precondition, inspect network |
+| `check_failed` | Agent returned verdict='fail' on `session.check` | Read agent's `actionable_hint` in the result; usually points at a fix |
+| `check_protocol_error` / `see_protocol_error` / `extract_protocol_error` | IPC broke (stdin closed, malformed JSON, wrong response type) | Parent agent died or sent malformed response; not a test issue |
+| `extract_validation_failed` | Agent returned data but zod rejected it | Either agent misread page (sharper hint), schema too strict (relax), or page lacks data (real test failure) |
+| `do_replay_failed` | Cached component primitive failed during replay | Tier-1 ladder couldn't rescue; need fresh authoring (delete component md to force re-record) |
+| `do_no_recording` | Agent sent do_complete with zero primitives | Either misunderstood instruction or page already in target state |
+| `pause_aborted` | Agent aborted ad-hoc pause | Read abort reason; if real product issue, file `dev_task(source_type='regression_failure', assigned_team='engineering')` |
+| `recall_miss` | session.recall hit a key with no prior remember | Producing block didn't run, or key typo |
+| `primitive_not_implemented` | Action shape unrecognized | Check action JSON shape against PrimitiveAction / ComponentAction / LegacyAction |
+
+When the failure is a Tier-1 ladder rescue (component self-healed mid-run), the runner emits a `self_heal_event`; backend creates a `self_heal_review` dev_task per §5.5. Don't fix the component reactively — wait for QA triage.
+
 ## Common prelude — server is the single source of truth
 
 - All QA rules live on the server in `backend/src/mcp/v3/methodology.ts`. Do NOT repeat rule text here — load via `get_qa_methodology(section)`.

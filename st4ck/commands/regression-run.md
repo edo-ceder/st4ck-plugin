@@ -197,6 +197,29 @@ This command does NOT attempt to fix code or tests. Regression failures might in
 
 Only a human has enough context to decide. Report the evidence, let them choose.
 
+## Phase 5 §5.5 — automatic dev_task escalation
+
+The runner emits structured `error.class` entries on each failed primitive. The backend `save_execution_log` route (per Phase 5 §5.5) automatically:
+- Creates a `regression_failure` dev_task per failed test (`assigned_team='qa'`, `priority='medium'`)
+- Creates a `self_heal_review` dev_task per component that triggered a Tier-1 ladder rescue mid-run
+- Emits `test_stale_candidate` events on `test_coverage_events` for the QA Kanban + authoring-lead to react
+
+You don't need to file dev_tasks manually for failures — they appear on the QA Kanban automatically. Your job is to **report them in the run summary** with links so the user / QA agent can triage from one place.
+
+## Phase 5 §4.7.1 — branch / PR / environment attribution
+
+If invoked with `--branch <name>` / `--git-sha <sha>` / `--environment <id>` flags, the runner annotates every `test_executions` row with these. Per-environment signatures (`test_cases.signed_environments[]`) — a test signed against staging does NOT auto-promote to prod; each env signs independently. Surface per-env pass rate in the report when more than one environment is in scope.
+
+## Common error.class hints (for the regression report)
+
+| error.class | What to write in "Recommended Actions" |
+|---|---|
+| `element_not_found` (mass) | "Recent UI change likely renamed selectors — run /st4ck:impact on the recent merge to surface affected components" |
+| `element_not_actionable` | "Possible modal overlay or load timing — investigate via /st4ck:debug" |
+| `check_failed` (LLM verdict fail) | "Agent's actionable_hint may suggest the fix; surface it to QA reviewer" |
+| `do_replay_failed` | "Cached component drifted; delete the component md to force re-record on next run" |
+| `pause_aborted` | "Agent aborted mid-pause; check the abort reason — usually a real product issue" |
+
 ---
 
 ## Scheduling

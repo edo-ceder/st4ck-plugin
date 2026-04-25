@@ -1,8 +1,29 @@
 # QA Sub-Agent Dispatch Contracts
 
-Shared dispatch prompt templates used by the `qa-testing-regression`, `qa-testing-version`, and `qa-testing-migration` skills to invoke the `qa-author` and `qa-reviewer` sub-agents.
+Shared dispatch prompt templates used by `qa-testing-regression`, `qa-testing-version`, `qa-testing-migration` (router), `qa-testing-migrate-agentic-to-v2` (Path A), `qa-testing-upgrade-components-v1-to-v2` (Path B), and `qa-testing-bootstrap-components` to invoke sub-agents:
 
-**Why this file exists:** the three authoring-flow skills dispatch the same two sub-agents with the same structural prompt. Keeping one copy here prevents drift between the skills. Each skill provides its own CONTEXT fields; this file provides the frame.
+- **`authoring-lead`** — Phase 4 §4.2 Agent Teams orchestrator (primary path for regression / version / Path-A migration / bootstrap)
+- **`component-author`** — focused authoring of ONE component (dispatched by authoring-lead)
+- **`test-author`** — composes ONE test from existing components (dispatched by authoring-lead)
+- **`qa-author`** — single-agent fallback for tiny scopes (one component, one assertion)
+- **`qa-reviewer`** — independent reviewer (always dispatched separately from author)
+
+**Why this file exists:** every authoring-flow skill dispatches the same set of sub-agents with the same structural prompt. Keeping one copy here prevents drift between skills. Each skill fills CONTEXT fields specific to its intent; INSTRUCTIONS blocks are copied verbatim.
+
+## Phase 5 §5.1 — `intent_sources` mandatory in every dispatch
+
+EVERY authoring dispatch (authoring-lead / qa-author / test-author) MUST include `intent_sources` in the CONTEXT fields. The reviewer's 13th attestation `intent_alignment` hard-blocks sign on empty `intent_sources`. Free-text source_type is the always-available minimum:
+
+```json
+{
+  "source_type": "free_text",
+  "source_text": "<1-2 sentences describing what the test verifies — the spec, even when no PRD exists>",
+  "source_id": null,
+  "verified_by_reviewer": false
+}
+```
+
+For projects with a PRD / specs / dev_tasks, prefer linking those instead of (or in addition to) free_text. Multiple entries are fine.
 
 ---
 
