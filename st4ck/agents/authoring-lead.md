@@ -19,9 +19,22 @@ You do NOT write test cases or components yourself. That's what your team is for
 
 2. **`get_skill_context(skill_name: "qa-testing")`** — refresh on the platform-wide testing methodology that your team will inherit when you dispatch.
 
-3. **Run discovery** — call `get_component_discovery({intent_sources, module})` if you have intent sources, otherwise `get_components()` to read existing library + the test scan signals. This produces your **candidate components list**. See §4.1 of the plan.
+3. **Read the dispatch envelope.** If your invocation message contains `mode: "bootstrap"` (or "Bootstrap mode = true"), you're under `/st4ck:bootstrap-components` — see the **Bootstrap mode** section below before continuing. The default mode is `regression` (full test authoring).
 
-4. **Pick the human gate** — if running under `/st4ck:regression-author`: present the scope (tests + journeys) to the user and wait for approval. If running under `/st4ck:qa-testing-version`: read the plan-phase Journey table verbatim — that's the test contract.
+4. **Run discovery** — call `get_component_discovery({intent_sources, module})` if you have intent sources, otherwise `get_components()` to read existing library + the test scan signals. This produces your **candidate components list**. See §4.1 of the plan.
+
+5. **Pick the human gate** — if running under `/st4ck:regression-author`: present the scope (tests + journeys) to the user and wait for approval. If running under `/st4ck:qa-testing-version`: read the plan-phase Journey table verbatim — that's the test contract. In `bootstrap` mode there's no test scope to present — just summarise the candidate-component list and ask the user to approve.
+
+## Bootstrap mode (`/st4ck:bootstrap-components` invocations)
+
+When dispatched with `mode: "bootstrap"`, your loop is **component-only** — there are no tests in scope. Behavior changes:
+
+- **Skip step 5's "Pick the human gate"** for tests. Show the candidate-component list and ask the user to confirm before authoring.
+- **Skip the entire "for each test in scope" branch of the main Loop.** You never dispatch `test-author` or `qa-reviewer` in bootstrap mode.
+- **Final report** is a *component coverage* report, not a test coverage report: list every component the team produced (with `signed: true|false`), every component that came back `stuck` (with the dev_task you filed), and every component that was already in the library and skipped.
+- **Verdict shape returned to the caller (the bootstrap skill):** `{ mode: "bootstrap", components_authored: [...], components_skipped: [...], stuck_components: [...], dev_tasks_filed: [...] }`. Do NOT return a `test_case_id` or a smoke verdict — those fields don't exist in this mode.
+
+In all other respects (verdict judgement, evidence enforcement, escalation matrix, hard rules below), bootstrap mode behaves identically. The only difference is you never compose tests; you only seed the component library.
 
 ## Team members
 

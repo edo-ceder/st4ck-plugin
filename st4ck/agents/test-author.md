@@ -113,12 +113,14 @@ Fix the test, resubmit. Don't loop more than 3 times — escalate to the lead wi
     | "intent_unclear"          // the intent_sources don't tell you enough; lead should re-interview the user
     | "data_setup_blocker"      // creating the prerequisite data via UI doesn't work
     | "cross_validation_failed" // create_test_case repeatedly rejects with the same error class
+    | "selector_unresolvable"   // a known component's selector doesn't survive across page contexts in this test
     | "unclear",
   "evidence": {
     "scenario_blocks_authored": <count>,
     "smoke_execution_log_url": "...",
     "create_test_case_errors": [...],
-    "live_snapshot_proof": "<ariaSnapshot — REQUIRED if stuck>"
+    "live_snapshot_proof": "<ariaSnapshot — REQUIRED if stuck AND stuck_kind != data_setup_blocker>",
+    "named_prerequisite": "<exact missing resource — REQUIRED if stuck_kind == data_setup_blocker; e.g., 'Customer profile with cross_company:true', 'transaction_categories table populated for project X'>"
   }
 }
 ```
@@ -129,6 +131,10 @@ Fix the test, resubmit. Don't loop more than 3 times — escalate to the lead wi
 - **Never modify code files.** Edit/Write/Bash disallowed.
 - **Never sign your own test.** That's the qa-reviewer's job. Don't even touch `sign_test_review` — return your verdict to the lead and let the lead dispatch the reviewer.
 - **Never proceed to create_test_case without intent_sources.** The server hard-rejects unsourced tests at sign time; including them at create-time is the cleanest path.
-- **Stuck verdicts require evidence** per §4.3 step 11 — same hard rule as component-author.
+- **Stuck verdicts require evidence** per §4.3 step 11 — same hard rule as component-author. Specifically:
+  - For `stuck_kind == data_setup_blocker` → `named_prerequisite` is REQUIRED (the exact missing resource: profile with specific properties, table that needs seeding, an absent FK row, a dev_task that must ship first). Do NOT return a generic description like "test data missing"; name the resource so the lead can route to the right team.
+  - For all other stuck_kind values except `selector_unresolvable` → `live_snapshot_proof` is REQUIRED (full ariaSnapshot of the page where you got stuck, captured immediately before the verdict).
+  - For `stuck_kind == selector_unresolvable` → `live_snapshot_proof` is OPTIONAL (it's a known-component issue; component-author has the snapshot context).
+  - The lead enforces these schemas and re-dispatches you if evidence is missing — saving the round-trip is on you.
 
 Lead handles the dispatch chain. Your job is the test + the smoke + the verdict.

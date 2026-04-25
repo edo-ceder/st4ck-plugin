@@ -48,7 +48,7 @@ function parseArgs() {
     baseUrl: '',
     token: '',
     mcpUrl: process.env.ST4CK_MCP_URL || 'https://app.st4ck.io/mcp/v3/',
-    mcpDataUrl: process.env.ST4CK_MCP_DATA_URL || '', // Derived from mcpUrl if not set — V1 for data tools (bubble, supabase)
+    mcpDataUrl: process.env.ST4CK_MCP_DATA_URL || '', // Derived from mcpUrl if not set — st4ck-dev (/mcp/dev/) for data tools (bubble, supabase, code_nodes)
     headless: false,
     continueExecId: '',
     fromBlock: -1,
@@ -93,12 +93,12 @@ function parseArgs() {
     process.exit(1);
   }
 
-  // Derive V1 data URL from any versioned QA URL: /mcp/v<N>/ → /mcp/
-  // Generalised regex catches V3 → V4 (and future versions) so backend SQL
-  // blocks always route to the V1 data MCP regardless of which QA-server
-  // version the user has configured. Fix per plan §16 (B4 from round-3 audit).
+  // Derive st4ck-dev data URL from any versioned QA URL: /mcp/v<N>/ → /mcp/dev/
+  // V1 (/mcp/) was retired at substrate close (2026-04-25) per plan §11.6;
+  // backend SQL blocks now route to st4ck-dev (/mcp/dev/), which hosts
+  // bubble_*, supabase_query, and code_nodes data tools.
   if (!opts.mcpDataUrl) {
-    opts.mcpDataUrl = opts.mcpUrl.replace(/\/mcp\/v\d+\/?$/, '/mcp/');
+    opts.mcpDataUrl = opts.mcpUrl.replace(/\/mcp\/v\d+\/?$/, '/mcp/dev/');
   }
 
   return opts;
@@ -992,9 +992,9 @@ async function executeMcpCallStep(step, mcpCtx) {
   if (!tool) return { stdout: '', stderr: 'mcp_call: "tool" field required', ok: false };
 
   // Route to the correct MCP server:
-  //   V3 (/mcp/v3/) — QA tools (resolve_action, get_test_details, etc.)
-  //   V1 (/mcp/)    — Project data tools (bubble_list_records, supabase_query, etc.)
-  // Backend verification blocks use data tools → V1
+  //   V3 (/mcp/v3/)   — QA tools (resolve_action, get_test_details, etc.)
+  //   Dev (/mcp/dev/) — Project data tools (bubble_list_records, supabase_query, etc.)
+  // Backend verification blocks use data tools → st4ck-dev
   const url = mcpCtx.mcpDataUrl || mcpCtx.mcpUrl;
 
   try {

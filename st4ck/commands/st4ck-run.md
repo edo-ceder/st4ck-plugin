@@ -1,11 +1,37 @@
 ---
-description: Execute a deterministic test case using the st4ck runner. Handles agentic block handoff and rerun from failure.
-argument-hint: <test_case_id> [--env <environment_name>]
+description: Execute a deterministic test case using the st4ck runner. Handles agentic block handoff and rerun from failure. Supports both the legacy run-test.js (exit-42 protocol) and the new @st4ck/runner (IPC pause + storageState rehydrate).
+argument-hint: <test_case_id> [--env <environment_name>] [--new-runner]
 ---
 
 # /st4ck-run
 
-You are an orchestrator for deterministic test execution. You call `run-test.js`, handle exit codes, and manage agentic block handoff.
+You are an orchestrator for deterministic test execution. You select the appropriate runner, handle the pause protocol, and manage agentic block handoff.
+
+## Runner selection
+
+Two runners are wired in during the Phase 4–6 transition:
+
+| Runner | Path | Pause protocol | When to use |
+|---|---|---|---|
+| **`@st4ck/runner`** (new) | `packages/st4ck-runner/dist/cli.js` (or `npx st4ck`) | IPC pause + `--browser-mode=rehydrate` | Tests where `test_cases.use_new_runner=true`; all newly authored tests; recordings produced by `npx st4ck author` |
+| **`run-test.js`** (legacy) | `${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js` | exit-42 + `--continue --from-block <N>` | Tests where `use_new_runner=false`; the 340-test legacy regression suite during Phase 6 migration |
+
+Plugin shim (plan §1.11) routes between them based on `use_new_runner`. If the user passes `--new-runner`, force the new runner regardless. Otherwise read the test row and dispatch.
+
+## New-runner CLI shape (`@st4ck/runner`)
+
+```bash
+npx st4ck run <test_file_or_test_case_id> \
+  --base-url <url> \
+  --mode=execution        # default; set to "authoring" only for /st4ck-author flows
+  --browser-mode=fresh    # default; "rehydrate" loads storageState from .st4ck/sessions/<id>.json
+  --env <environment_name>
+  --session "st4ck-$(date +%s)"
+```
+
+Pause protocol: when the runner needs the agent to handle an agentic block, it writes a JSON pause envelope to a named pipe (IPC) and **stays alive**. The agent reads the envelope, performs the work, writes the result back to the same pipe, and the runner resumes in the same browser context. No process death, no `--continue`, no storageState reload — the page state is preserved.
+
+Recordings (from `npx st4ck author`) live as markdown files at `.st4ck/recordings/<slug>.md`. Pass the path directly to `npx st4ck run` to replay them — no DB roundtrip required.
 
 ## Resolution
 
@@ -28,7 +54,7 @@ From `$ARGUMENTS`:
    - If `--env` provided, look up `test_environments` by name
    - Otherwise use the first active environment for the project
 
-## Execution
+## Execution — legacy runner (`run-test.js`)
 
 **Note**: The script handles profile acquisition/release internally — do NOT acquire profiles yourself.
 
@@ -48,6 +74,19 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
 | **42** | Agentic pause | Read stdout JSON, handle the agentic block (see below), then continue |
 
 **Note**: Profile acquisition and release is handled internally by the script. Do NOT manage profiles yourself.
+
+## Execution — new runner (`@st4ck/runner`)
+
+Run the test through the new runner. The runner stays alive across pauses (IPC), so there are no exit codes for pauses — only a final 0 (pass) or 1 (fail).
+
+```bash
+npx st4ck run <test_case_id_or_recording_path> \
+  --base-url <url> --env <env_name> --session "st4ck-$(date +%s)"
+```
+
+For agentic blocks, the runner emits a pause envelope on the IPC channel and waits for your reply. There is no `--from-block N` because the same browser context is held; you reply to the pause with the block result and the runner resumes in place.
+
+If the test was recorded under `npx st4ck author` and lives in `.st4ck/recordings/<slug>.md`, pass the file path instead of a UUID — no `get_test_details` call needed.
 
 ### Agentic Block Handoff (exit 42)
 

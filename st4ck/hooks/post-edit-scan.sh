@@ -14,11 +14,17 @@
 #         "matcher": { "tool_name": "Edit|Write" },
 #         "hooks": [{
 #           "type": "command",
-#           "command": "$CLAUDE_PROJECT_DIR/.claude/plugins/cache/st4ck-marketplace/st4ck/hooks/post-edit-scan.sh"
+#           "command": "${CLAUDE_PLUGIN_ROOT}/hooks/post-edit-scan.sh"
 #         }]
 #       }
 #     ]
 #   }
+#
+# `${CLAUDE_PLUGIN_ROOT}` resolves to the live st4ck-plugin source directory
+# (set by Claude Code when the plugin is loaded — works for both directory-
+# source marketplace installs and the cache layout). Do NOT hard-code
+# `~/.claude/plugins/cache/st4ck-marketplace/...` — that path is a stale
+# leftover and won't receive plugin updates.
 #
 # Reads the Edit/Write tool's `file_path` from $CLAUDE_TOOL_INPUT_PATH (a JSON
 # blob). Greps the local component-citation index file (built lazily on first

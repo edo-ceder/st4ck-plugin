@@ -39,46 +39,43 @@ A component is worth authoring if it satisfies ALL five:
 
 If a candidate fails the 5-rule, drop it (the orchestrator will inline the steps in the test instead).
 
-### Step 2 — Dispatch the authoring-lead per surviving candidate
+### Step 2 — Dispatch the authoring-lead with the full surviving candidate list
 
-You don't author components yourself. Use the Agent tool with `subagent_type='authoring-lead'`:
+You don't author components yourself. Use the Agent tool with `subagent_type='authoring-lead'`. Hand the lead the **entire surviving candidate list** in one dispatch — the lead manages the parallel component-author queue (see §6 step 4 / Parallelism below) so you don't have to.
 
 ```
 dispatch authoring-lead with:
-  Bootstrap mode = true (no test composition; only component authoring)
-  Single candidate: {name, method, params_schema, target_ui, source_citations_hint, role}
-  Suite ID: <not applicable; bootstrap mode>
-  Project ID: <project>
+  mode: "bootstrap"          # the lead's bootstrap-mode branch — no test composition
+  project_id: <uuid>
+  candidates: [
+    { name, method, params_schema, target_ui, source_citations_hint, role },
+    ...
+  ]
 ```
 
-The lead handles its own loop:
+The lead's per-candidate work (delegated to component-author teammates):
 - KB search (mandatory)
 - Source read + handler audit
-- Profile acquire
-- Live session
-- session.do
-- Self-test
-- KB writeback
-- Release profile
+- Profile acquire → live session → session.do → self-test → KB writeback → release profile
 
-### Step 3 — Receive the lead's verdict
+### Step 3 — Receive the lead's coverage report
 
-For bootstrap mode the lead returns per-candidate:
+For bootstrap mode the lead returns an **aggregate** report (not per-candidate):
 ```json
 {
-  "outcome": "success" | "stuck",
-  "component_id": "<uuid>" | null,
-  "stuck_kind": "..." | null,
-  "evidence": {...}
+  "mode": "bootstrap",
+  "components_authored":  [{ "component_id": "...", "name": "...", "method": "...", "signed": true|false }, ...],
+  "components_skipped":   [{ "name": "...", "method": "...", "reason": "already in library" }, ...],
+  "stuck_components":     [{ "name": "...", "method": "...", "stuck_kind": "...", "evidence": {...} }, ...],
+  "dev_tasks_filed":      [{ "id": "...", "assigned_team": "...", "source_type": "...", "title": "..." }, ...]
 }
 ```
 
 ### Step 4 — Continue or halt
 
-- `success` → next candidate.
-- `stuck` → log + queue a dev_task per the §5.7 escalation matrix.
-
-If a critical mass (>30%) of candidates fail with `stuck_kind='selector_unresolvable'` or `'st4ck_primitive_bug'`, **halt the bootstrap**. Surface to the user — something structural is wrong (UI built differently than expected, or st4ck primitives don't fit this app's patterns).
+- All `components_authored` succeeded → bootstrap complete; run the user-facing summary in "Return to the user" below.
+- `stuck_components.length > 0` → already filed as dev_tasks by the lead per the §5.7 escalation matrix; just summarise them in the report.
+- If `stuck_components.length / (components_authored.length + stuck_components.length) > 0.30` AND the dominant `stuck_kind` is `selector_unresolvable` or `st4ck_primitive_bug`, **halt the bootstrap** and surface to the user — something structural is wrong (UI built differently than expected, or st4ck primitives don't fit this app's patterns).
 
 ## Parallelism
 
