@@ -37,6 +37,23 @@ Every version test MUST land with `intent_sources` populated (≥1 entry). The n
 
 ## Your journey
 
+### Step 0 — Load methodology BEFORE designing the contract
+
+**HARD RULE.** Before you propose a coverage contract, before you decompose the spec, before you write a single test row — call:
+
+```
+get_qa_methodology(section: "process")
+get_qa_methodology(section: "block_format")
+```
+
+The "process" section contains the rule that most often gets missed at design time:
+
+> **E2E TESTS ARE JOURNEYS, NOT INDIVIDUAL OPERATIONS.** An e2e test is a complete user journey: login, setup, action, verification. *"Create expense"* and *"Edit expense"* are NOT separate e2e tests — they are steps within a *"CRUD Lifecycle"* journey. Multi-block (3–8 blocks minimum) is required for `test_type='e2e'`.
+
+If you propose without this rule loaded, you will reflexively map one acceptance criterion to one test and inflate the suite by 4–6×. Every AC under the same admin page / same user role / same workflow belongs in **one journey** as separate blocks, not separate tests.
+
+The methodology_key returned by this call is also required by `create_test_case` later — load now, save the key, reuse on dispatch.
+
 ### Step 1 — Scope detection
 
 Version tests are authored from a plan. The user either:

@@ -25,6 +25,23 @@ Every test you cause to be authored MUST land with `intent_sources` populated (�
 
 ## Your journey
 
+### Step 0 — Load methodology BEFORE designing the contract
+
+**HARD RULE.** Before you propose a regression scope, before you decompose the module into tests — call:
+
+```
+get_qa_methodology(section: "process")
+get_qa_methodology(section: "block_format")
+```
+
+The "process" section contains the rule that most often gets missed at design time:
+
+> **E2E TESTS ARE JOURNEYS, NOT INDIVIDUAL OPERATIONS.** An e2e test is a complete user journey: login, setup, action, verification. *"Create expense"* and *"Edit expense"* are NOT separate e2e tests — they are steps within a *"CRUD Lifecycle"* journey. Multi-block (3–8 blocks minimum) is required for `test_type='e2e'`.
+
+Without this rule in mind, you will reflexively propose one test per acceptance criterion / per CRUD verb / per filter, and inflate the suite by 4–6×. Every AC under the same module / same admin page / same user role belongs in **one journey** as separate blocks, not separate tests.
+
+The methodology_key returned by this call is also required by `create_test_case` later — load now, save the key, reuse on dispatch.
+
 ### Step 1 — Scope detection
 
 From the user's request, classify the scope:
@@ -45,9 +62,9 @@ Regression authoring requires grounded understanding of what's shipped. You do t
 3. **Check existing coverage** — `get_test_suites(category: "regression")` to avoid duplication.
 4. **Search the KB** — `search_test_knowledge(platform: "<platform>")` surfaces platform quirks (Bubble timing, React portal selectors, etc.). Pass results forward so the author doesn't re-discover solved problems. KB search is also one leg of the per-component triad (see methodology).
 
-### Step 3 — Load methodology for the preparation you need
+### Step 3 — (Methodology already loaded in Step 0 — skip)
 
-Call `get_qa_methodology(section: "process")` if you need the 7-step authoring model or the test-classification rules to form a proposal. You will NOT pass methodology text to the sub-agents — they fetch their own. But you may need rules to shape the proposal.
+If you skipped Step 0, go back. The "process" + "block_format" sections must be loaded before proposing the contract — not as a fallback for "if you need rules" but as a mandatory pre-condition. Methodology_key from Step 0 is reused here.
 
 ### Step 4 — Propose scope + depth, then HUMAN GATE
 

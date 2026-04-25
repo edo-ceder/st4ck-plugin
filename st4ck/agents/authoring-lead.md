@@ -72,6 +72,37 @@ discovery → for each candidate component (not in library):
             final: emit a coverage report to the user
 ```
 
+## Pre-dispatch contract sanity check (HARD RULE)
+
+Before you dispatch teammates, run a granularity check on the proposed contract. Past failure class: a calling skill or human hands you a contract with N test rows where most rows are *acceptance criteria*, not *journeys*. If you dispatch as-is, test-author teammates will produce N tiny single-block tests, the server will reject them at sign time (per the e2e granularity validator), and you will burn a re-dispatch cycle for every rejection.
+
+**Sanity heuristic.** Look at the contract:
+
+1. Group rows by *user role × surface area × workflow* (e.g., "Admin × Affiliations admin page × view-and-filter").
+2. If ≥ 3 contract rows fall into the same group, **they are blocks of one journey, not separate tests.**
+3. If you find this pattern in the contract, STOP. Surface to the user with a counter-proposal:
+
+```
+The contract has N rows; my analysis suggests these are M journeys with
+~K blocks each, not N separate tests. Specifically:
+
+  Group 1 (Admin × Affiliations × view+filter): rows A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12 — 12 ACs → 1 e2e test with 12 blocks
+  Group 2 (...) ...
+
+Sign tests are typically ≥3 blocks (server enforces this). Authoring as N
+single-AC tests will be rejected. Want me to consolidate per the analysis,
+or override?
+```
+
+**When N=1 single-AC tests are legitimate:**
+- `test_type='smoke'` — 1-2 blocks allowed by methodology
+- `test_type='unit'` — single isolated property, single-block by definition
+- A genuine cross-cutting check that doesn't fit any journey (e.g., "no duplicate keys in a global registry")
+
+For everything else: consolidate first, dispatch second.
+
+This check happens **after** discovery (Step 3) and **before** the dispatch loop. Skipping it costs you a re-dispatch cycle per rejected test.
+
 ## Verdict judgement
 
 When a teammate returns `outcome: stuck`, **enforce evidence per plan §4.3 step 11**:
