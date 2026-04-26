@@ -21,6 +21,57 @@ const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
+/**
+ * Diagnostic — when the resolved binary is a local dev dist (sibling repo or
+ * an env-pointed dist/cli.js), check whether any source file under the
+ * adjacent src/ tree is newer than the dist's cli.js. If so, the dist is
+ * stale; print a single warning line so the operator (or an agent reading
+ * stderr) can run `npm run build` before continuing.
+ *
+ * Diagnostic only — never auto-builds, never blocks. A stale dist still runs;
+ * the warning surfaces it visibly so silent runs of pre-fix code stop
+ * happening (Apr 27 Ori session burned hours debugging "platform gaps" that
+ * were actually a stale dist).
+ */
+function warnIfDistStale(distCliPath) {
+  try {
+    const distMtime = fs.statSync(distCliPath).mtimeMs;
+    // src/ lives one level up from dist/cli.js
+    const srcDir = path.resolve(path.dirname(distCliPath), "..", "src");
+    if (!fs.existsSync(srcDir) || !fs.statSync(srcDir).isDirectory()) return;
+    let newestSrcMtime = 0;
+    let newestSrcPath = "";
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(full);
+        } else if (/\.(ts|tsx|mts)$/.test(entry.name) && !entry.name.endsWith(".d.ts")) {
+          const m = fs.statSync(full).mtimeMs;
+          if (m > newestSrcMtime) {
+            newestSrcMtime = m;
+            newestSrcPath = full;
+          }
+        }
+      }
+    };
+    walk(srcDir);
+    if (newestSrcMtime > distMtime) {
+      const ageSec = Math.round((newestSrcMtime - distMtime) / 1000);
+      const distRel = path.relative(process.cwd(), distCliPath);
+      const srcRel = path.relative(process.cwd(), newestSrcPath);
+      console.error(
+        `[run-test-next] WARNING: dist appears stale. ${srcRel} is ${ageSec}s newer than ${distRel}.`,
+      );
+      console.error(
+        `[run-test-next] Run \`npm run build\` in ${path.relative(process.cwd(), path.resolve(path.dirname(distCliPath), ".."))} to pick up source changes.`,
+      );
+    }
+  } catch (err) {
+    // Diagnostic — never let this fail the run.
+  }
+}
+
 function resolveRunner() {
   const env = process.env.ST4CK_RUNNER_BIN;
   if (env) {
@@ -28,6 +79,7 @@ function resolveRunner() {
       console.error(`[run-test-next] ST4CK_RUNNER_BIN set but file not found: ${env}`);
       process.exit(2);
     }
+    warnIfDistStale(env);
     return { cmd: "node", args: [env] };
   }
 
@@ -37,7 +89,10 @@ function resolveRunner() {
     __dirname, "..", "..", "..",
     "fig-video-scribe", "packages", "st4ck-runner", "dist", "cli.js",
   );
-  if (fs.existsSync(sibling)) return { cmd: "node", args: [sibling] };
+  if (fs.existsSync(sibling)) {
+    warnIfDistStale(sibling);
+    return { cmd: "node", args: [sibling] };
+  }
 
   // Last resort: global PATH.
   const which = spawnSync("which", ["st4ck-runner"], { encoding: "utf8" });
