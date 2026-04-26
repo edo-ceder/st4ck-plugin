@@ -39,6 +39,28 @@ If the project has many legacy tests AND the candidate-component list (from `get
 
 This used to be a separate `/st4ck:bootstrap-components` skill; folded in here 2026-04-26 because "how to author a component" is one methodology section anyone can pull on demand, and pre-seeding is just a different invocation context for `qa-author`.
 
+## Step 5.6 — Mandatory bootstrap when project has zero v2 components (Phase 6.1)
+
+Before dispatching ANY per-test migration, check whether the project has at least one signed v2 component to anchor agent dispatches against. Without a reference, every dispatched `qa-author` invents its own conventions — particularly costly on no-code platforms (Bubble, Retool) where idiomatic patterns aren't obvious from the page DOM.
+
+**Detection:** call `get_components({summary: true})`. Count entries where `signed === true` AND the component is v2 (`step_count > 0` indicates `sequence` is populated). If that count is 0, the project is in **fresh-project state**.
+
+**Action when fresh-project state is detected:**
+
+1. **Pick the simplest non-trivial flow** — typically project login. If login is trivial (one click, no MFA), pick the next simplest flow with a verifiable post-state (e.g., dashboard load + visible identity element, settings open, profile name read).
+2. **Dispatch one `qa-author` teammate** with a *bootstrap brief*:
+   - "Author ONE component for `<flow_name>`. This is the project's reference idiom — every subsequent migration agent will be pointed at it. Be conservative on selectors, exhaustive on TRIAD evidence, and stop after one component is saved."
+   - For closed-loop platforms (Bubble/Retool/Webflow/n8n/etc.), instruct the author to set `platform_native: true` + populate `platform_artifacts` ({platform, editor_url, element_id, screenshot_path}) on `save_component` instead of attempting file:line citations.
+   - Pass the canonical primitive list (run `st4ck-runner --list-primitives` or fetch via `get_qa_methodology(section: "component_authoring")`).
+3. **Dispatch a fresh `qa-reviewer`** with a bootstrap-review brief: "Sign or fail this single component. It will be the project's canonical reference; reviewer rigor must hold."
+4. **On approval** — capture the component UUID. Inject into every subsequent dispatch brief:
+   - Append: "**Reference idiom for this project:** `<component_name>.<method>` (UUID `<id>`). Match its conventions for locator shape, TRIAD shape, parameter naming, and platform_native handling. Deviate only with stated rationale."
+5. **On rejection** — surface the reviewer's findings to the user; do NOT proceed with per-test migration. The first component must be signed before the orchestrator dispatches the wider sweep.
+
+**Why this is mandatory, not optional:** without a reference, the first 3-5 migrated components produce inconsistent conventions; later components inherit drift; reviewer load triples chasing inconsistencies. One signed reference upfront amortizes across the whole sweep.
+
+**When to skip:** project already has ≥1 signed v2 component (`get_components` returned a non-zero count with `signed === true && step_count > 0`).
+
 ## Branch A — Agentic re-author (Shape-A or mixed)
 
 Same orchestration shape as `/st4ck:regression-author`:
