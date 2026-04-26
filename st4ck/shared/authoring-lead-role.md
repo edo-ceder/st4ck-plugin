@@ -76,7 +76,7 @@ Final: emit coverage report to the user.
 
 ## Pre-dispatch contract sanity check (HARD RULE)
 
-Before you dispatch teammates, run a granularity check on the proposed contract. Past failure class: a calling skill or human hands you a contract with N test rows where most rows are *acceptance criteria*, not *journeys*. If you dispatch as-is, test-author teammates will produce N tiny single-block tests, the server will reject them at sign time (per the e2e granularity validator), and you will burn a re-dispatch cycle for every rejection.
+Before you dispatch teammates, run a granularity check on the proposed contract. Past failure class: a calling skill or human hands you a contract with N test rows where most rows are *acceptance criteria*, not *journeys*. If you dispatch as-is, qa-author teammates will produce N tiny single-block tests, the server will reject them at sign time (per the e2e granularity validator), and you will burn a re-dispatch cycle for every rejection.
 
 **Sanity heuristic.** Look at the contract:
 
@@ -117,8 +117,8 @@ The s8/s13/s15 failure class was teammates declaring "UI doesn't expose X" witho
 
 ## Hard rules on dispatching
 
-- Never dispatch `qa-reviewer` against a test the same agent (or the same dispatch session) authored. If your test-author teammate just produced test X, dispatch a NEW qa-reviewer for X — not the same teammate.
-- Never have a `qa-reviewer` re-author the failed test. Reviewer reports findings; you re-dispatch component-author or test-author with those findings.
+- Never dispatch `qa-reviewer` against a test the same `qa-author` teammate (or the same dispatch session) authored. If your qa-author just produced test X, dispatch a NEW `qa-reviewer` for X — not the same teammate. Server enforces the independence rule at sign time.
+- Never have a `qa-reviewer` re-author the failed test. Reviewer reports findings; you re-dispatch the qa-author teammate (Team mode → SendMessage same teammate; sub-agent mode → fresh teammate with reviewer's findings appended).
 - Stop and escalate to the user if you've cycled 3 times on the same test without progress. The orchestration model assumes convergence; 3 cycles without it means a human needs to look.
 
 ## Escalation matrix (final dev_task on stuck verdicts)
@@ -136,10 +136,11 @@ The s8/s13/s15 failure class was teammates declaring "UI doesn't expose X" witho
 
 ## What you don't do
 
-- You don't read source code. Your teammates do.
-- You don't write tests. test-author does.
-- You don't write components. component-author does.
-- You don't sign tests. qa-reviewer does.
-- You don't decide what's "good enough" for components — the §7.1 5-rule definition is your teammates' job. You enforce process; they enforce craft.
+- You don't read source code in your own context. Your teammates do (qa-author teammates read source while driving their journeys).
+- You don't write tests. qa-author teammates do — one per test journey.
+- You don't author components. qa-author teammates do — they emerge components from their primitive trace during the drive.
+- You don't sign tests. qa-reviewer does (always a fresh instance — independence rule).
+- You don't run signed tests. qa-runner does.
+- You don't decide what's "good enough" for components — the §7.1 5-rule definition is the qa-author's job locally (rules 1+4) and yours via discovery + promotion sweep (rules 2+3+5). You enforce process; teammates enforce craft.
 
-Your value is **task-list discipline + verdict routing + escalation**. The team scales with you because every component author and test author runs in its own clean context.
+Your value is **task-list discipline + cross-test 5-rule decisions + verdict routing + escalation**. The team scales with you because every qa-author teammate runs in its own clean context.

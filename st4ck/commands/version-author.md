@@ -19,7 +19,7 @@ Activate the `qa-testing-version` skill and follow its journey. The user's `$ARG
 Do NOT duplicate the skill's journey here. The skill orchestrates:
 
 - read the plan-phase Journey table verbatim (test contract)
-- the current session agent acts as the authoring lead and dispatches `component-author` + `test-author` teammates (Phase 4 §4.2 Agent Teams pattern) with the plan-phase + dev_task context
+- the current session agent acts as the authoring lead and dispatches one `qa-author` per test journey (Phase 4 §4.2 Agent Teams pattern) with the plan-phase + dev_task context. Each qa-author drives a single Session, captures primitives, and decomposes the trace into save_component(s) + create_test_case at the end of the drive.
 - each authored test_case carries `gates_on_plan_phase = <phase_id>` per §4.6 + §4.7 (tests stay red until phase ships)
 - intent_sources populated from the plan's user-journey row + the dev_task (§5.1; reviewer's 13th attestation hard-blocks sign without it)
 - dispatch `qa-reviewer` for sign (independent attester, must NOT be the author)

@@ -1,30 +1,31 @@
 ---
-description: Migrate legacy tests to v2 component format. Acts as the ROUTER — classifies each test by shape (agentic / components_v1 / components_v2 / mixed) via classify_test_migration_shape, then dispatches Path A (heavy, ~10k tokens/test) or Path B (light, ~2k tokens/component). Per plan §13.2.
+description: Migrate legacy tests to v2 component format. Activates the qa-testing-migration skill, which classifies each test by shape (agentic / components_v1 / components_v2 / mixed) via classify_test_migration_shape and runs the appropriate internal branch (agentic re-author OR component-upgrade) inline. Per plan §13.2 (consolidated 2026-04-26 — was three skills before).
 argument-hint: <suite_id | suite_name | --test <test_id> | --scope project>
 ---
 
 # /st4ck:migrate-tests
 
-This command is the explicit form of the **`qa-testing-migration`** skill — which is now the ROUTER, not a single migration journey. Per plan §13.2 it classifies each test and dispatches one of:
+This command is the explicit form of the **`qa-testing-migration`** skill — one consolidated skill with two internal branches:
 
-- **`/st4ck:migrate-agentic-to-v2`** (Path A — heavy, full Agent Teams cycle) for `agentic` and `mixed` shapes
-- **`/st4ck:upgrade-components-v1-to-v2`** (Path B — light, mechanical) for `components_v1` shape
+- **Agentic re-author branch** (~10k tokens/test) — for `agentic` and `mixed` shapes. Runs the same orchestration as `/st4ck:regression-author`: dispatch one `qa-author` per legacy test, drive the journey, decompose into save_component(s) + create_test_case, atomic swap.
+- **Component-upgrade branch** (~2k tokens/component) — for `components_v1` shape. Mostly mechanical: `eval_sequence` → `sequence` translation via `primitive_registry`, fresh snapshot, targeted citation gathering. Per-component escalation between branches handled inline.
 
-The router's whole purpose is to avoid wasting Path A's ~10k tokens on a Shape-B test that Path B handles in ~2k.
+Earlier drafts split this into three skills (router + Path A + Path B); collapsed 2026-04-26 because every dispatch boundary is a place agents lose context.
 
-## Before you migrate
+## Optional pre-seed
 
-If this is the first migration run against this project, **first run `/st4ck:bootstrap-components`** to seed the test_components library. Path A re-authors benefit from a pre-seeded library; Path B's citation-gathering benefits from already-grepped sources.
+For projects with N>20 legacy tests where components clearly recur, the migration skill itself can dispatch a few `qa-author` teammates upfront with a "library-only" brief (drive candidate flows, save_component, no test composition). Authored components become available to both branches. Used to be a separate `/st4ck:bootstrap-components` skill; folded into the migration skill 2026-04-26 because "how to author a component" is one methodology section anyone can pull on demand.
 
 ## What to do
 
-Activate the `qa-testing-migration` skill (the router). The user's `$ARGUMENTS` is one of:
+Activate the `qa-testing-migration` skill. The user's `$ARGUMENTS` is one of:
+
 - A suite UUID
-- A suite name (router calls `get_test_suites` to resolve)
+- A suite name (skill calls `get_test_suites` to resolve)
 - `--test <test_id>` for a single-test scope
 - `--scope project` for the whole project
-- Empty (router lists suites containing legacy tests and asks)
+- Empty (skill lists suites containing legacy tests and asks)
 
 Do NOT duplicate the skill's procedure here. The skill is the canonical source of truth.
 
-All methodology rules live on the server (`backend/src/mcp/v3/methodology.ts`); sub-agents fetch on demand via `get_qa_methodology`. Nothing duplicated here.
+All methodology rules live on the server (`backend/src/mcp/v3/methodology.ts`); sub-agents fetch on demand via `get_qa_methodology`.
