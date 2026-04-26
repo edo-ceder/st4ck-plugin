@@ -1,5 +1,5 @@
 ---
-description: Phase 6 §6.2 — seed the project's test_components library before per-test migration. Calls get_component_discovery, dispatches authoring-lead in bootstrap mode, returns a populated component pool. Run before `/st4ck:migrate-tests` against a fresh project.
+description: Phase 6 §6.2 — seed the project's test_components library before per-test migration. Calls get_component_discovery, then the current session agent (acting as the authoring lead) dispatches component-author teammates per candidate. Returns a populated component pool. Run before `/st4ck:migrate-tests` against a fresh project.
 argument-hint: <module-name | --intent-source <type:id>>
 ---
 

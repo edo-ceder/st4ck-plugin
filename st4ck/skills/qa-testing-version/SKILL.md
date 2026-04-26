@@ -5,16 +5,20 @@ description: Use this skill when the user wants to author version tests for in-d
 
 # QA Testing — Version Authoring Journey
 
-You are orchestrating version test authoring. Version tests exist to drive in-development work — they are written BEFORE implementation completes, start red, and go green phase-by-phase as the implementation lands.
+**You — the current session agent — are the authoring lead.** Read the lead role-doc below; that's your orchestration playbook. You dispatch teammate sub-agents (`component-author`, `test-author`, `qa-reviewer`, `qa-runner`) — even a team of 1 if scope is small. You do NOT dispatch a sub-agent called "authoring-lead"; that's not a thing — you ARE the lead.
 
-## Phase 4 §4.6 + §4.7 — Agent Teams + phase-gated signing
+@${CLAUDE_PLUGIN_ROOT}/shared/authoring-lead-role.md
 
-Same Agent Teams (`authoring-lead` → `component-author` + `test-author` → `qa-reviewer`) as regression. Difference is **when signing fires:**
+Version tests drive in-development work — they are written BEFORE implementation completes, start red, and go green phase-by-phase as the implementation lands.
+
+## Phase 4 §4.6 + §4.7 — phase-gated signing
+
+Same teammate set (`component-author` + `test-author` → `qa-reviewer` → `qa-runner`) as regression. Difference is **when signing fires:**
 
 - Regression: smoke must pass at author time; sign immediately on pass.
 - Version: tests are authored as `draft` with `gates_on_plan_phase = <phase_id>` set. Tests stay red until the plan phase ships (`dev_task.status='shipped'` event triggers the auto-smoke per §4.7); on green, the test becomes eligible for sign.
 
-Pass `gates_on_plan_phase` to the `authoring-lead`'s dispatch prompt so the lead sets it on each authored test_case.
+Pass `gates_on_plan_phase` in your dispatch prompt to each `test-author` teammate so they set it on every authored test_case.
 
 ## Phase 5 §5.1 — intent_sources required
 
@@ -85,35 +89,36 @@ Since the implementation is in flux, your survey focuses on what's stable:
 1. `get_test_profiles()` — pass IDs/roles forward.
 2. `create_test_suite(name, category: "version")` — pass the ID forward. Link to `version_id` if the project has an active version.
 
-### Step 5 — Dispatch qa-author
+### Step 5 — Dispatch the team
 
-Use the `qa-author dispatch contract` template. Fill CONTEXT fields:
-- **Intent:** version
-- **Approved coverage:** copy the FULL Journey table verbatim as the CONTRACT
-- **Source priority:** plan + spec + code (code is in flux; plan is authoritative)
-- **Target feature:** the plan's feature name
+Per the lead role-doc above, you dispatch leaf teammates yourself (you are the lead). Pick the right shape for the scope:
 
-Copy INSTRUCTIONS block verbatim.
+- **Team-of-N (default for >1 component or >2 tests):** dispatch one `component-author` per missing component (in parallel where possible — multiple Agent tool calls in one message), then dispatch one `test-author` per test_case in the contract. See `shared/qa-dispatch-contracts.md` for the dispatch templates.
+- **Team-of-1 fallback (single component + single assertion only):** dispatch `qa-author` instead — it does discovery + component + test in one teammate. Use sparingly.
 
-Author the journeys against the plan's contract. Sub-agent fetches methodology itself.
+Common to both: include `intent_sources` + `gates_on_plan_phase = <phase_id>` in every dispatch CONTEXT.
 
-### Step 6 — Validate
+### Step 6 — Validate teammate verdicts
 
-When sub-agent returns:
+As each teammate returns:
 - Every Status=Ready row in the Journey table has a corresponding test?
 - Every edge row covered?
 - Any additional edge cases the author discovered during code reading beyond the plan?
 - `get_components()` — every referenced component exists?
 
-If gaps, re-dispatch with specific missing rows.
+If gaps, re-dispatch a fresh teammate with the specific missing rows.
 
-### Step 7 — Dispatch qa-reviewer (INDEPENDENT)
+### Step 7 — Dispatch qa-reviewer (INDEPENDENT — must NOT be the author)
 
-Use `qa-reviewer dispatch contract`. Fresh instance. Server enforces independence.
+Use `qa-reviewer dispatch contract` from `shared/qa-dispatch-contracts.md`. Always a fresh instance. Server enforces independence at sign time.
 
-Re-dispatch author if review fails. Loop until signed.
+Re-dispatch a fresh `test-author` (not the original) if review fails with findings. Loop reviewer ↔ author until signed.
 
-### Step 8 — Report back to orchestrator (or user)
+### Step 8 — Dispatch qa-runner (smoke + execution)
+
+Once tests are signed, dispatch `qa-runner` with the test_case_ids + base_url + environment. The runner drives the plugin's `run-test.js`, handles agentic-block pauses, and returns per-test verdicts. For version tests born red (waiting on phase-gated signing), skip this step until `dev_task.status='shipped'` flips the test to eligible.
+
+### Step 9 — Report back to orchestrator (or user)
 
 If called from `/implement`, update the implement state file with suite ID + test IDs. Otherwise present:
 

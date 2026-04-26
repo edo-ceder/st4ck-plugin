@@ -1,18 +1,20 @@
 # QA Sub-Agent Dispatch Contracts
 
-Shared dispatch prompt templates used by `qa-testing-regression`, `qa-testing-version`, `qa-testing-migration` (router), `qa-testing-migrate-agentic-to-v2` (Path A), `qa-testing-upgrade-components-v1-to-v2` (Path B), and `qa-testing-bootstrap-components` to invoke sub-agents:
+Shared dispatch prompt templates used by `qa-testing-regression`, `qa-testing-version`, `qa-testing-migration` (router), `qa-testing-migrate-agentic-to-v2` (Path A), `qa-testing-upgrade-components-v1-to-v2` (Path B), and `qa-testing-bootstrap-components`. **The current session agent enacts the authoring-lead role** (see `authoring-lead-role.md` in this directory) and dispatches these leaf teammate sub-agents:
 
-- **`authoring-lead`** — Phase 4 §4.2 Agent Teams orchestrator (primary path for regression / version / Path-A migration / bootstrap)
-- **`component-author`** — focused authoring of ONE component (dispatched by authoring-lead)
-- **`test-author`** — composes ONE test from existing components (dispatched by authoring-lead)
+- **`component-author`** — focused authoring of ONE component
+- **`test-author`** — composes ONE test from existing components
 - **`qa-author`** — single-agent fallback for tiny scopes (one component, one assertion)
 - **`qa-reviewer`** — independent reviewer (always dispatched separately from author)
+- **`qa-runner`** — executes signed tests via the plugin's `run-test.js`; handles agentic-block pauses inline; returns per-test verdicts
 
-**Why this file exists:** every authoring-flow skill dispatches the same set of sub-agents with the same structural prompt. Keeping one copy here prevents drift between skills. Each skill fills CONTEXT fields specific to its intent; INSTRUCTIONS blocks are copied verbatim.
+**No `authoring-lead` sub-agent.** The lead is a role the parent session enacts — not something you dispatch via the `Agent` tool. CC sub-agents are leaves and cannot recursively dispatch teammates. Earlier versions of this plugin defined `authoring-lead` as a sub-agent and that was structurally wrong.
+
+**Why this file exists:** every authoring-flow skill dispatches the same set of teammate sub-agents with the same structural prompt. Keeping one copy here prevents drift between skills. Each skill fills CONTEXT fields specific to its intent; INSTRUCTIONS blocks are copied verbatim.
 
 ## Phase 5 §5.1 — `intent_sources` mandatory in every dispatch
 
-EVERY authoring dispatch (authoring-lead / qa-author / test-author) MUST include `intent_sources` in the CONTEXT fields. The reviewer's 13th attestation `intent_alignment` hard-blocks sign on empty `intent_sources`. Free-text source_type is the always-available minimum:
+EVERY authoring dispatch (`qa-author` / `test-author`) MUST include `intent_sources` in the CONTEXT fields. The reviewer's 13th attestation `intent_alignment` hard-blocks sign on empty `intent_sources`. Free-text source_type is the always-available minimum:
 
 ```json
 {
@@ -125,6 +127,39 @@ For each test:
 - **Signed:** Yes / No (reason if No)
 
 Plus coverage-gap analysis across the suite at the end.
+```
+
+---
+
+## qa-runner dispatch contract
+
+When dispatching the `qa-runner` sub-agent (after sign), use this template. The parent fills CONTEXT; INSTRUCTIONS go verbatim.
+
+```
+## QA Runner Assignment
+
+### Context (filled by parent / authoring lead)
+
+- **Test case IDs:** [uuid, uuid, ...]   (one or many — runner iterates)
+- **Suite ID:** [uuid]                   (optional, if running a whole signed suite)
+- **Base URL:** [staging URL]
+- **Environment ID:** [uuid]             (must match a row in test_environments)
+- **Branch / git SHA / PR:** [optional, for §4.7.1 attribution]
+- **Headed?:** true|false                (default: headed)
+
+### INSTRUCTIONS (verbatim — do not paraphrase)
+
+You drive the plugin's `run-test.js` for each test_case_id. Pre-flight: confirm each test is signed (`journey_signature` or `review_signature` non-null) — refuse unsigned tests with `stuck_kind: "unsigned_test"`. Invoke via Bash:
+
+  node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js <test_case_id> <base_url> --session "qa-runner-$(date +%s)" [--branch <name>] [--git-sha <sha>] [--environment <env_id>]
+
+Exit code policy: 0=pass, 1=fail (read execution log for diagnostics, ≤90 sec triage, move on), 42=agentic pause (handle the brief inline per `qa-runner.md` rules, save_execution_log, resume with --continue --from-block N+1).
+
+Safety limits: incremental write per test, ≤90 sec triage budget, 3-consecutive-same-signature bail, no retry on exit 1, retry-once-then-skip on infra error, 90-min wall-clock cap.
+
+### Output
+
+A verdict per the qa-runner schema in `agents/qa-runner.md` — array of per-test results + totals + stop_reason if any. Failures auto-route to dev_tasks via §5.5 server-side; you don't file them.
 ```
 
 ---

@@ -1,27 +1,31 @@
 ---
 name: qa-testing-regression
-description: Use this skill when the user wants to author regression tests that protect shipped behavior. Triggers on phrases like "create regression tests for", "protect this module", "regression coverage for", "add regression suite". Per Phase 4 §4.2 the primary dispatch path is `authoring-lead` (Agent Teams pattern); single-agent `qa-author` is the backwards-compat fallback for one-component-scope tests.
+description: Use this skill when the user wants to author regression tests that protect shipped behavior. Triggers on phrases like "create regression tests for", "protect this module", "regression coverage for", "add regression suite". You — the current session agent — are the authoring lead; you dispatch component-author + test-author + qa-reviewer + qa-runner teammates directly. Single-agent qa-author is the fallback for one-component, one-assertion scopes.
 ---
 
 # QA Testing — Regression Authoring Journey
 
-You are orchestrating regression test authoring. Regression tests protect shipped behavior — NOT new features (use `qa-testing-version` for in-development work).
+**You — the current session agent — are the authoring lead.** Read the lead role-doc below; that's your orchestration playbook. You dispatch teammate sub-agents (`component-author`, `test-author`, `qa-reviewer`, `qa-runner`) — even a team of 1 if scope is small. You do NOT dispatch a sub-agent called "authoring-lead"; that's not a thing — you ARE the lead.
 
-## Phase 4 §4.2 — primary dispatch is `authoring-lead`
+@${CLAUDE_PLUGIN_ROOT}/shared/authoring-lead-role.md
 
-Per the LLM-native platform plan, regression authoring scales through the **Agent Teams pattern**: this skill dispatches a single `authoring-lead` per scope, which then dispatches `component-author` and `test-author` teammates per candidate. Lead coordinates via durable state (`dev_tasks`, `test_coverage_events`); teammates run in isolated context windows. Token target ≤10k per fresh test end-to-end.
+Regression tests protect shipped behavior — NOT new features (use `qa-testing-version` for in-development work).
+
+## Phase 4 §4.2 — Agent Teams pattern (you orchestrate)
+
+Regression authoring scales through fan-out: one `component-author` per missing component, one `test-author` per test_case in the contract, one fresh `qa-reviewer` per signed test, one `qa-runner` for execution. Teammates run in isolated context windows. Token target ≤10k per fresh test end-to-end. You coordinate via durable state (`dev_tasks`, `test_coverage_events`) and `SendMessage` for live cross-talk.
 
 Use single-agent `qa-author` only as a fallback for tiny scopes (one component, one assertion) where the team split is overkill — see `qa-author.md`.
 
 ## Phase 5 §5.1 — intent_sources required
 
-Every test you cause to be authored MUST land with `intent_sources` populated (≥1 entry). The `authoring-lead` derives intent from your dispatch prompt — pass enough context (PRD node IDs, spec section IDs, dev_task IDs, or a free-text description) for the lead to set this. The reviewer's 13th attestation `intent_alignment` will block sign if intent_sources is empty or merely rubber-stamps current code.
+Every test you cause to be authored MUST land with `intent_sources` populated (≥1 entry). Pass enough context (PRD node IDs, spec section IDs, dev_task IDs, or a free-text description) into each `test-author` dispatch so the teammate can set this. The reviewer's 13th attestation `intent_alignment` will block sign if intent_sources is empty or merely rubber-stamps current code.
 
 ## Common prelude — server is the single source of truth
 
 - All QA rules live on the server in `backend/src/mcp/v3/methodology.ts`. Do NOT repeat rule text here — load it via `get_qa_methodology(section)`.
 - Your `methodology_key` from `get_qa_methodology` has a 2-hour TTL. Re-fetch if expired.
-- Sub-agents (`authoring-lead`, `component-author`, `test-author`, `qa-author`, `qa-reviewer`) fetch methodology themselves on dispatch — you don't pass it to them. You dispatch with context + intent; they load rules and attest server-side.
+- Teammate sub-agents (`component-author`, `test-author`, `qa-author`, `qa-reviewer`, `qa-runner`) fetch methodology themselves on dispatch — you don't pass it to them. You dispatch with context + intent; they load rules and attest server-side.
 
 ## Your journey
 
@@ -93,32 +97,36 @@ Present to the user:
 1. `get_test_profiles()` — pass IDs/roles to the author.
 2. `create_test_suite(name, category: "regression")` — pass the ID to the author.
 
-### Step 6 — Dispatch qa-author
+### Step 6 — Dispatch the team
 
-Compose the dispatch prompt using the `qa-author dispatch contract` template below. Fill the CONTEXT fields with your survey results; copy the INSTRUCTIONS block verbatim.
+Per the lead role-doc above, you dispatch leaf teammates yourself. Pick the shape:
 
-Intent: **regression**
-Source priority: code + running app (not PRD/specs unless the user provided them)
+- **Team-of-N (default for any non-trivial scope):** dispatch one `component-author` per missing component (run multiple in parallel via multiple `Agent` tool calls in one message), then dispatch one `test-author` per test_case. See `shared/qa-dispatch-contracts.md` for the templates.
+- **Team-of-1 fallback (one component + one assertion only):** dispatch `qa-author` instead — combines discovery + component + test in one teammate. Use sparingly.
 
-Dispatch the sub-agent.
+Common to both: include `intent_sources` in every CONTEXT. Intent: **regression**. Source priority: code + running app (not PRD/specs unless the user provided them).
 
-### Step 7 — Validate author output
+### Step 7 — Validate teammate verdicts
 
-When the sub-agent returns:
+As each teammate returns:
 - Suite ID set? Test IDs listed?
 - Every core flow + edge case from the approved scope has at least one test?
-- Every referenced component exists (call `get_components()` and cross-check `{component, method}` usages)?
-- Research artifact has `<sources_read>` with every cited file listed?
+- Every referenced component exists (`get_components()` cross-check)?
+- Research artifact has `<sources_read>` with every cited file?
 
-If gaps, re-dispatch with the specific missing rows.
+If gaps, re-dispatch a fresh teammate with the specific missing rows.
 
-### Step 8 — Dispatch qa-reviewer (INDEPENDENT)
+### Step 8 — Dispatch qa-reviewer (INDEPENDENT — must NOT be the author)
 
-Use the `qa-reviewer dispatch contract`. This MUST be a fresh sub-agent instance (different from the author). The server hard-rejects signatures with `is_independent_reviewer: "no"`.
+Use the `qa-reviewer dispatch contract` from `shared/qa-dispatch-contracts.md`. Always a fresh instance — never the same teammate that authored the test. Server hard-rejects signatures with `is_independent_reviewer: "no"`.
 
-If review finds issues: re-dispatch qa-author with the specific fixes, then re-dispatch qa-reviewer. Loop until zero failures.
+If review finds issues: re-dispatch a fresh `test-author` (not the original) with the specific fixes, then re-dispatch a fresh `qa-reviewer`. Loop until zero failures.
 
-### Step 9 — Coverage report + HUMAN GATE
+### Step 9 — Dispatch qa-runner (smoke + execution)
+
+Once tests are signed, dispatch `qa-runner` with the test_case_ids + base_url + environment. The runner drives the plugin's `run-test.js`, handles agentic-block pauses inline, and returns per-test verdicts. Failures get auto-routed to `dev_tasks` per §5.5; the runner reports back, you summarize for the human.
+
+### Step 10 — Coverage report + HUMAN GATE
 
 Present:
 

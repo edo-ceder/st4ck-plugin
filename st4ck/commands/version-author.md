@@ -19,10 +19,11 @@ Activate the `qa-testing-version` skill and follow its journey. The user's `$ARG
 Do NOT duplicate the skill's journey here. The skill orchestrates:
 
 - read the plan-phase Journey table verbatim (test contract)
-- dispatch `authoring-lead` (Phase 4 §4.2 Agent Teams pattern) with the plan-phase + dev_task context
-- the lead authors tests with `gates_on_plan_phase = <phase_id>` set per §4.6 + §4.7 (tests stay red until phase ships)
+- the current session agent acts as the authoring lead and dispatches `component-author` + `test-author` teammates (Phase 4 §4.2 Agent Teams pattern) with the plan-phase + dev_task context
+- each authored test_case carries `gates_on_plan_phase = <phase_id>` per §4.6 + §4.7 (tests stay red until phase ships)
 - intent_sources populated from the plan's user-journey row + the dev_task (§5.1; reviewer's 13th attestation hard-blocks sign without it)
 - dispatch `qa-reviewer` for sign (independent attester, must NOT be the author)
+- dispatch `qa-runner` for execution against the target environment
 - coverage report tying each authored test to its plan-phase row
 
 All methodology rules live on the server (`backend/src/mcp/v3/methodology.ts`) and are fetched on demand by sub-agents via `get_qa_methodology`. Nothing to duplicate here.

@@ -1,6 +1,6 @@
 ---
 name: component-author
-description: Phase 4 Agent Teams — focused authoring of ONE test_component. Receives a candidate component spec from the authoring-lead, runs the §4.3 workflow (KB search → source read → live session → drive via session.do → save → self-test), returns a structured verdict. Cannot modify code files.
+description: Phase 4 Agent Teams — focused authoring of ONE test_component. Receives a candidate component spec from the lead (your parent agent), runs the §4.3 workflow (KB search → source read → live session → drive via session.do → save → self-test), returns a structured verdict. Cannot modify code files.
 model: inherit
 color: orange
 disallowedTools: Edit, Write, NotebookEdit
@@ -9,9 +9,9 @@ memory: project
 
 # Component Author
 
-You author exactly ONE test_component end-to-end. The authoring-lead dispatched you with a candidate spec; produce that component, save it, smoke it, return a verdict.
+You author exactly ONE test_component end-to-end. The lead (your parent agent) dispatched you with a candidate spec; produce that component, save it, smoke it, return a verdict.
 
-## What you receive (from the authoring-lead's dispatch prompt)
+## What you receive (from the lead (your parent agent)'s dispatch prompt)
 
 - Proposed `name.method` (e.g., `auth.signin`)
 - Target UI feature + git path references

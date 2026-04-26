@@ -43,30 +43,31 @@ The new format requires `intent_sources` (≥1 entry at sign time per Phase 5 §
 
 Don't skip this — sign_test_review hard-rejects empty intent_sources.
 
-### Step 3 — Dispatch the authoring-lead
+### Step 3 — Enact the lead role yourself
 
-Use the Agent tool with subagent_type='authoring-lead'. In the dispatch prompt:
-- `Migration mode = true`
-- The LEGACY TEST you're migrating (full scenario_blocks, verbatim)
-- The intent_sources you derived (Step 2)
-- The suite_id + project_id
-- The existing component inventory
+You ARE the authoring lead — the migration is orchestrated in your context (the current session). Per `shared/authoring-lead-role.md`:
 
-The authoring-lead handles §4.1 component discovery → component-author dispatches per candidate → test-author composes the new test → qa-reviewer signs. You don't manage that loop yourself; the lead does.
+1. Run §4.1 component discovery (`get_component_discovery`) against the legacy test to identify candidates.
+2. Dispatch `component-author` teammates per candidate that doesn't exist yet (parallel via multiple `Agent` tool calls in one message).
+3. Once components are ready, dispatch a `test-author` teammate to compose the new test from them — pass the legacy test's full scenario_blocks, the intent_sources from Step 2, the suite_id + project_id, and the existing component inventory.
+4. When test-author returns green, dispatch a fresh `qa-reviewer` (independence rule).
+5. After sign, dispatch `qa-runner` to execute the new test against the target environment.
 
-### Step 4 — Receive the lead's verdict
+You manage the loop. Track teammate verdicts. Re-dispatch on stuck. Surface budget overflows up to the router (Step 6).
 
-The lead returns:
+### Step 4 — Collect teammate verdicts and assemble the migration record
+
+After all teammates return:
 ```json
 {
   "outcome": "success" | "stuck",
   "new_test_case_id": "<uuid>" | null,
-  "old_test_case_id": "<the test you dispatched>",
+  "old_test_case_id": "<the test you migrated>",
   "components_authored": [...],
   "components_reused": [...],
   "smoke_execution_id": "<uuid>" | null,
   "qa_reviewer_signed": true | false,
-  "tokens_used": <total across teammates>,
+  "tokens_used": <sum across all teammate dispatches you ran>,
   "evidence": {...}
 }
 ```
@@ -92,9 +93,9 @@ Per plan §13.4 partial-upgrade preservation: do NOT delete the old test until t
 Per plan §6.0 gate: mean across Shape-A gate tests ≤ 10k tokens. Hard cap per test is 15k (1.5× target — anything beyond signals architectural mismatch).
 
 If a single test exceeds 15k tokens:
-- Halt the lead's dispatch chain
+- Halt your dispatch loop
 - Return verdict `stuck` with `stuck_kind: 'budget_exceeded'`
-- Surface to the router for human triage — possibly the test is genuinely too complex, possibly the lead is looping
+- Surface to the router for human triage — possibly the test is genuinely too complex, possibly the team is looping
 
 ## Demote path
 
@@ -102,8 +103,8 @@ You don't demote to Path B. You ARE the heavy path; if you can't migrate a test,
 
 ## Hard rules
 
-- **Never bypass the authoring-lead** — don't try to author components or compose tests yourself. The whole point of Path A is the team pattern; if you collapse it back into one agent you lose the context-isolation benefit.
-- **Never sign your own migration.** qa-reviewer (independent) does that, dispatched by the authoring-lead.
+- **Never collapse the team into your own context** — don't try to author components or compose tests yourself in this skill's session. Always dispatch leaf teammates (component-author + test-author + qa-reviewer + qa-runner). The whole point of Path A is fan-out for context isolation; if you collapse it back you lose the benefit.
+- **Never sign your own migration.** Always dispatch a fresh `qa-reviewer` (independent of the test-author teammate). Server enforces the independence rule.
 - **Never delete the legacy test** until the new test is signed + green. Per §13.4 partial-upgrade preservation.
 - **Never skip intent_sources.** The 13th attestation requires the reviewer to compare test-vs-intent. With no intent_sources the attestation is meaningless.
 

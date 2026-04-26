@@ -92,7 +92,7 @@ create_dev_task({
 })
 ```
 
-Per plan §5.6, `create_dev_task` with `source_type='test_design_change'` server-side fires a `test_design_change_queued` event on `test_coverage_events` — the QA Kanban + authoring-lead pick it up automatically. You don't need to broadcast.
+Per plan §5.6, `create_dev_task` with `source_type='test_design_change'` server-side fires a `test_design_change_queued` event on `test_coverage_events` — the QA Kanban + any session running an authoring skill picks it up automatically. You don't need to broadcast.
 
 ### 4. Optionally invoke `propose.md` subworkflow
 

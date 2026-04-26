@@ -202,7 +202,7 @@ Only a human has enough context to decide. Report the evidence, let them choose.
 The runner emits structured `error.class` entries on each failed primitive. The backend `save_execution_log` route (per Phase 5 §5.5) automatically:
 - Creates a `regression_failure` dev_task per failed test (`assigned_team='qa'`, `priority='medium'`)
 - Creates a `self_heal_review` dev_task per component that triggered a Tier-1 ladder rescue mid-run
-- Emits `test_stale_candidate` events on `test_coverage_events` for the QA Kanban + authoring-lead to react
+- Emits `test_stale_candidate` events on `test_coverage_events` for the QA Kanban + any session running an authoring skill to react
 
 You don't need to file dev_tasks manually for failures — they appear on the QA Kanban automatically. Your job is to **report them in the run summary** with links so the user / QA agent can triage from one place.
 

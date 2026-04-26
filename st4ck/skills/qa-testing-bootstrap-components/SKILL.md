@@ -1,6 +1,6 @@
 ---
 name: qa-testing-bootstrap-components
-description: Phase 6 §6.2 prerequisite — seed the project's test_components library before per-test migration runs. Calls get_component_discovery to combine four signals (existing tests + dev plan + PRD + codebase scan), dispatches authoring-lead to author candidates, returns a populated component library. Triggered by `/st4ck:bootstrap-components` or auto by qa-testing-migration router when classifier reports significant uncovered candidate count.
+description: Phase 6 §6.2 prerequisite — seed the project's test_components library before per-test migration runs. Calls get_component_discovery to combine four signals (existing tests + dev plan + PRD + codebase scan); the current session agent (acting as the authoring lead) then dispatches `component-author` teammates per candidate. Returns a populated component library. Triggered by `/st4ck:bootstrap-components` or auto by qa-testing-migration router when classifier reports significant uncovered candidate count.
 ---
 
 # QA Testing — Bootstrap Components
@@ -39,28 +39,24 @@ A component is worth authoring if it satisfies ALL five:
 
 If a candidate fails the 5-rule, drop it (the orchestrator will inline the steps in the test instead).
 
-### Step 2 — Dispatch the authoring-lead with the full surviving candidate list
+### Step 2 — Dispatch component-author teammates yourself (you ARE the lead)
 
-You don't author components yourself. Use the Agent tool with `subagent_type='authoring-lead'`. Hand the lead the **entire surviving candidate list** in one dispatch — the lead manages the parallel component-author queue (see §6 step 4 / Parallelism below) so you don't have to.
+You — the current session agent — orchestrate. Per the lead role-doc (`shared/authoring-lead-role.md`), you dispatch `component-author` leaf teammates directly. **No "authoring-lead" sub-agent.** Bootstrap mode is the simplest team shape: just component-authors, no test-author / qa-reviewer / qa-runner needed (no tests to author or run).
+
+For each surviving candidate, dispatch one `component-author` teammate. Run them in parallel via multiple `Agent` tool calls in one message — up to 5 concurrent (8 with `ST4CK_MAX_CONTEXTS_PER_DAEMON=8`). Pass each:
 
 ```
-dispatch authoring-lead with:
-  mode: "bootstrap"          # the lead's bootstrap-mode branch — no test composition
-  project_id: <uuid>
-  candidates: [
-    { name, method, params_schema, target_ui, source_citations_hint, role },
-    ...
-  ]
+{name, method, params_schema, target_ui, source_citations_hint, role, project_id}
 ```
 
-The lead's per-candidate work (delegated to component-author teammates):
+Per-teammate work (handled inside each component-author):
 - KB search (mandatory)
 - Source read + handler audit
 - Profile acquire → live session → session.do → self-test → KB writeback → release profile
 
-### Step 3 — Receive the lead's coverage report
+### Step 3 — Collect teammate verdicts into the bootstrap coverage report
 
-For bootstrap mode the lead returns an **aggregate** report (not per-candidate):
+As each `component-author` returns its per-candidate verdict, accumulate into:
 ```json
 {
   "mode": "bootstrap",
@@ -71,15 +67,17 @@ For bootstrap mode the lead returns an **aggregate** report (not per-candidate):
 }
 ```
 
+You file the dev_tasks for stuck components per the §5.7 escalation matrix (the leaf component-author teammate doesn't have visibility to the full bootstrap context, so filing happens here at the orchestrator level).
+
 ### Step 4 — Continue or halt
 
 - All `components_authored` succeeded → bootstrap complete; run the user-facing summary in "Return to the user" below.
-- `stuck_components.length > 0` → already filed as dev_tasks by the lead per the §5.7 escalation matrix; just summarise them in the report.
+- `stuck_components.length > 0` → file dev_tasks per the §5.7 escalation matrix and surface in the report.
 - If `stuck_components.length / (components_authored.length + stuck_components.length) > 0.30` AND the dominant `stuck_kind` is `selector_unresolvable` or `st4ck_primitive_bug`, **halt the bootstrap** and surface to the user — something structural is wrong (UI built differently than expected, or st4ck primitives don't fit this app's patterns).
 
 ## Parallelism
 
-Per plan §6 step 4: 5 concurrent component-author teammates by default (configurable to 8 via `ST4CK_MAX_CONTEXTS_PER_DAEMON`). Each component-author teammate runs in its own context window; the bootstrap lead manages the queue.
+Per plan §6 step 4: 5 concurrent component-author teammates by default (configurable to 8 via `ST4CK_MAX_CONTEXTS_PER_DAEMON`). Each runs in its own context window; you (the parent session) manage the queue.
 
 ## Stop condition
 
@@ -105,7 +103,7 @@ Plus: per-component link to st4ck UI (component detail page).
 
 ## Hard rules
 
-- **Never author components yourself.** Dispatch authoring-lead.
+- **Never author components in your own context.** Always dispatch `component-author` teammates (one per candidate). Your job is the queue + the dev_task filing, not the authoring.
 - **Never lower the 5-rule.** "Almost reusable" tests should NOT become components — they pollute the library and confuse component_author teammates later.
 - **Never skip the KB search.** Bootstrap is high-volume; KB hits compound. A single saved lesson can prevent stuck verdicts on 5 subsequent components.
 - **Profile per role.** If a role has no profile, halt and ask user — don't author profiles silently.

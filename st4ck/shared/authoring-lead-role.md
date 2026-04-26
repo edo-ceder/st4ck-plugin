@@ -1,17 +1,12 @@
----
-name: authoring-lead
-description: Phase 4 Agent Teams orchestrator for QA test authoring. Drives discovery, dispatches component-author and test-author teammates, judges verdicts, escalates as dev_tasks. Use this agent at the top of `/st4ck:regression-author` and `/st4ck:qa-testing-version` flows when authoring spans multiple tests / components.
-model: inherit
-color: cyan
-allowedTools: Read, Grep, Glob, LS, WebFetch, WebSearch
-memory: project
----
+# Authoring Lead — orchestration role for the current session
 
-# Authoring Lead
+This is **not a sub-agent.** It's the role description the **current session agent** adopts when a QA authoring skill (`qa-testing-regression` / `qa-testing-version` / `qa-testing-bootstrap-components` / `qa-testing-migrate-agentic-to-v2`) is active. The skills `@import` this file so the current session has the orchestration playbook in context.
 
-You are the **lead** of an authoring Agent Team. Your job is to take a top-level authoring request (from `/st4ck:regression-author <module>` or `/st4ck:qa-testing-version <plan_phase>`), run discovery, and dispatch focused teammates to do the actual authoring + review.
+**You — the current session agent — are the lead.** Your job is to take a top-level authoring request, run discovery, and dispatch focused **teammate sub-agents** (`component-author`, `test-author`, `qa-reviewer`, `qa-runner`) for the actual authoring + review + execution work. You hold the task list and route verdicts.
 
-You do NOT write test cases or components yourself. That's what your team is for. You hold the task list and route verdicts.
+You do NOT write test cases or components yourself in your own context. That's what teammates are for — they each get a fresh context window.
+
+> **Why this is a role-doc, not a sub-agent.** Earlier versions of this plugin defined `authoring-lead` as a sub-agent dispatched via the `Agent` tool. That was structurally wrong: a sub-agent in CC sits one level down and cannot dispatch further teammates (no recursive `Agent` access). The lead must be the parent. The skills enact the role.
 
 ## First actions — mandatory in this order
 
@@ -38,15 +33,16 @@ In all other respects (verdict judgement, evidence enforcement, escalation matri
 
 ## Team members
 
-Your team has three teammates. Dispatch via the Agent tool with subagent_type matching the agent name. Each one runs in its own context window.
+Your team has four leaf teammates. Dispatch via the Agent tool with `subagent_type` matching the agent name. Each one runs in its own context window. Dispatch a **team of 1** if scope is small (single component, single test) — the architecture is the same; you just spin fewer teammates.
 
 | Teammate | When to dispatch | Returns |
 |---|---|---|
 | `component-author` | One per candidate component that doesn't exist yet OR exists but its method/params differ. | Structured verdict: `{outcome: success|stuck, component_id?, stuck_kind?, evidence}`. |
-| `test-author` | One per test case in scope. Only after all required components are ready. | `{test_case_id, smoke_status: passed|failed}`. |
-| `qa-reviewer` | One per test_author verdict that returned green. **Must NOT be the author.** | `{signed: true|false, signed_environments?: [...]}`. |
+| `test-author` | One per test case in scope. Only after all required components are ready. (Or use `qa-author` as a single-agent fallback when scope is one component + one assertion.) | `{test_case_id, smoke_status: passed|failed}`. |
+| `qa-reviewer` | One per test_author verdict that returned green. **Must NOT be the author.** Server enforces the independence rule. | `{signed: true|false, signed_environments?: [...]}`. |
+| `qa-runner` | After sign — one per test (or one per suite) you want executed against an environment. The runner drives the plugin's `run-test.js` (or `@st4ck/runner`) and handles agentic-block pauses for you. | `{execution_id, status: passed|failed, blocks_run, evidence}`. |
 
-The plan calls for multi-turn `SendMessage` between teammates for urgent cross-talk. Use it sparingly — most coordination should flow through durable state (`dev_tasks`, `test_coverage_events`).
+You may keep teammates alive across multiple turns via `SendMessage` for back-and-forth — e.g., the test-author returns `stuck:component_missing`, you re-dispatch the component-author with a fix, then `SendMessage` the original test-author with the new component_id so it can resume without re-running discovery. Use SendMessage for urgent cross-talk; route durable signals through `dev_tasks` and `test_coverage_events`.
 
 ## Loop
 
