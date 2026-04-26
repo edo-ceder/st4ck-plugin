@@ -5,7 +5,7 @@ description: Use this skill when the user wants to author version tests for in-d
 
 # QA Testing — Version Authoring Journey
 
-**You — the current session agent — are the authoring lead.** Read the lead role-doc below; that's your orchestration playbook. You dispatch teammate sub-agents (`component-author`, `test-author`, `qa-reviewer`, `qa-runner`) — even a team of 1 if scope is small. You do NOT dispatch a sub-agent called "authoring-lead"; that's not a thing — you ARE the lead.
+**You — the current session agent — are the authoring lead.** Read the lead role-doc below; that's your orchestration playbook. You dispatch ONE leaf teammate role (`qa-author`, one per test journey) plus `qa-reviewer` (fresh instance per sign) and `qa-runner` (execution). You do NOT dispatch a sub-agent called "authoring-lead"; that's not a thing — you ARE the lead.
 
 @${CLAUDE_PLUGIN_ROOT}/shared/authoring-lead-role.md
 
@@ -13,12 +13,12 @@ Version tests drive in-development work — they are written BEFORE implementati
 
 ## Phase 4 §4.6 + §4.7 — phase-gated signing
 
-Same teammate set (`component-author` + `test-author` → `qa-reviewer` → `qa-runner`) as regression. Difference is **when signing fires:**
+Same teammate set (one `qa-author` per journey → fresh `qa-reviewer` → `qa-runner`) as regression. Difference is **when signing fires:**
 
 - Regression: smoke must pass at author time; sign immediately on pass.
 - Version: tests are authored as `draft` with `gates_on_plan_phase = <phase_id>` set. Tests stay red until the plan phase ships (`dev_task.status='shipped'` event triggers the auto-smoke per §4.7); on green, the test becomes eligible for sign.
 
-Pass `gates_on_plan_phase` in your dispatch prompt to each `test-author` teammate so they set it on every authored test_case.
+Pass `gates_on_plan_phase` in your dispatch prompt to each `qa-author` teammate so they set it on every authored test_case.
 
 ## Phase 5 §5.1 — intent_sources required
 
@@ -89,16 +89,21 @@ Since the implementation is in flux, your survey focuses on what's stable:
 1. `get_test_profiles()` — pass IDs/roles forward.
 2. `create_test_suite(name, category: "version")` — pass the ID forward. Link to `version_id` if the project has an active version.
 
-### Step 5 — Dispatch the team
+### Step 4.5 — Component discovery + mode probe (BEFORE dispatching anyone)
 
-Per the lead role-doc above, you dispatch leaf teammates yourself (you are the lead). Pick the right shape for the scope:
+1. **`get_component_discovery({intent_sources, module})`** — combines existing-tests / dev-plan / PRD / codebase signals to produce a **candidate-component list** with cross-test reuse pre-evaluated (§7.1 5-rule rules 2/3/5). The candidate list will be handed to each qa-author teammate.
+2. **Probe Agent Teams availability.** Try `Agent(subagent_type:'qa-author', ...)` with a no-op prompt + then `SendMessage` to that teammate. If the message returns successfully, you're in **Team mode** (multi-turn teammates kept alive). If `SendMessage` errors with "tool not available" or similar, you're in **sub-agent mode** (one-shot dispatch). Pick mode for the WHOLE orchestration; do not mix.
+3. **Pre-acquire profile + capture storageState** (optional but recommended): `acquire_profile({role, environment_id})` once for the whole batch; drive a quick login session yourself; capture storageState to `.st4ck/state-<feature>.json`. Pass the `profile_id` + storageState path into each qa-author dispatch so teammates skip login (avoids N-login friction).
 
-- **Team-of-N (default for >1 component or >2 tests):** dispatch one `component-author` per missing component (in parallel where possible — multiple Agent tool calls in one message), then dispatch one `test-author` per test_case in the contract. See `shared/qa-dispatch-contracts.md` for the dispatch templates.
-- **Team-of-1 fallback (single component + single assertion only):** dispatch `qa-author` instead — it does discovery + component + test in one teammate. Use sparingly.
+### Step 5 — Dispatch one qa-author per test journey
 
-Common to both: include `intent_sources` + `gates_on_plan_phase = <phase_id>` in every dispatch CONTEXT.
+Per the lead role-doc above, you dispatch leaf teammates yourself (you are the lead). The team shape is:
 
-### Step 6 — Validate teammate verdicts
+- **One `qa-author` per row in the Journey table** (parallel via multiple `Agent` tool calls in one message — up to 5 concurrent on a single daemon, configurable to 8 via `ST4CK_MAX_CONTEXTS_PER_DAEMON`).
+- Each qa-author drives ONE Session against its journey, captures primitives, decomposes the trace into save_component(s) + create_test_case at the end. See `shared/qa-dispatch-contracts.md` for the dispatch template.
+- Pass each teammate: the journey description, `intent_sources`, `gates_on_plan_phase = <phase_id>`, the candidate-component list (from Step 4.5), the existing component library, the pre-acquired `profile_id` + storageState path.
+
+### Step 6 — Validate teammate verdicts (mode-aware verdict recovery)
 
 As each teammate returns:
 - Every Status=Ready row in the Journey table has a corresponding test?
@@ -106,13 +111,25 @@ As each teammate returns:
 - Any additional edge cases the author discovered during code reading beyond the plan?
 - `get_components()` — every referenced component exists?
 
-If gaps, re-dispatch a fresh teammate with the specific missing rows.
+If a teammate returns `outcome: 'stuck'`, route per the §5.7 escalation matrix in the lead role-doc. **For recoverable stucks where you have new info to share** (e.g., a missing component the orchestrator can supply via a quick separate dispatch):
+- **Team mode**: `SendMessage` the same teammate with the new info. It keeps its context (KB hits, source reads, snapshots) and revises its work.
+- **Sub-agent mode**: Re-dispatch a fresh `qa-author` with the original spec + the new info appended. New context window, same outcome shape.
+
+### Step 6.5 — Promotion sweep (cross-test 5-rule decisions)
+
+After all qa-authors return, scan returned `test_cases` for **inline primitive sub-sequences** that appear in ≥2 tests. These are the rule 2/3/5 promotions per §7.1 — repeated patterns that the per-test teammates couldn't evaluate alone (each only saw its own test).
+
+For each repeated sequence:
+- Author it as a proper component via `save_component` (TRIAD evidence required: file:line + snapshot excerpt + KB result).
+- For each test_case that contained the inline sequence: `modify_test_case` to replace the inline primitives with the new component call.
+
+For typical contracts (5–13 journeys), this usually promotes 2–5 components from the inline noise. For very small contracts (1–2 tests), it's a no-op.
 
 ### Step 7 — Dispatch qa-reviewer (INDEPENDENT — must NOT be the author)
 
 Use `qa-reviewer dispatch contract` from `shared/qa-dispatch-contracts.md`. Always a fresh instance. Server enforces independence at sign time.
 
-Re-dispatch a fresh `test-author` (not the original) if review fails with findings. Loop reviewer ↔ author until signed.
+If review fails with findings: re-dispatch the same qa-author teammate (Team mode) or a fresh qa-author (sub-agent mode) with the reviewer's findings. Then re-dispatch a fresh qa-reviewer. Loop reviewer ↔ author until signed.
 
 ### Step 8 — Dispatch qa-runner (smoke + execution)
 

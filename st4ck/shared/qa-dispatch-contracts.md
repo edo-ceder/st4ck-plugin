@@ -1,20 +1,20 @@
 # QA Sub-Agent Dispatch Contracts
 
-Shared dispatch prompt templates used by `qa-testing-regression`, `qa-testing-version`, `qa-testing-migration` (router), `qa-testing-migrate-agentic-to-v2` (Path A), `qa-testing-upgrade-components-v1-to-v2` (Path B), and `qa-testing-bootstrap-components`. **The current session agent enacts the authoring-lead role** (see `authoring-lead-role.md` in this directory) and dispatches these leaf teammate sub-agents:
+Shared dispatch prompt templates used by `qa-testing-regression`, `qa-testing-version`, and `qa-testing-migration`. **The current session agent enacts the authoring-lead role** (see `authoring-lead-role.md` in this directory) and dispatches these leaf teammate sub-agents:
 
-- **`component-author`** — focused authoring of ONE component
-- **`test-author`** — composes ONE test from existing components
-- **`qa-author`** — single-agent fallback for tiny scopes (one component, one assertion)
-- **`qa-reviewer`** — independent reviewer (always dispatched separately from author)
-- **`qa-runner`** — executes signed tests via the plugin's `run-test.js`; handles agentic-block pauses inline; returns per-test verdicts
+- **`qa-author`** — primary authoring teammate. Drives one test journey end-to-end with primitives, captures the trace, decomposes into save_component(s) + create_test_case at the end.
+- **`qa-reviewer`** — independent reviewer (always dispatched separately from author; server-enforced independence).
+- **`qa-runner`** — executes signed tests via the plugin's `run-test.js`; handles agentic-block pauses inline; returns per-test verdicts.
 
-**No `authoring-lead` sub-agent.** The lead is a role the parent session enacts — not something you dispatch via the `Agent` tool. CC sub-agents are leaves and cannot recursively dispatch teammates. Earlier versions of this plugin defined `authoring-lead` as a sub-agent and that was structurally wrong.
+**No `authoring-lead` sub-agent.** The lead is a role the parent session enacts — not something you dispatch via the `Agent` tool. CC sub-agents are leaves and cannot recursively dispatch teammates. (Corrected 2026-04-26.)
+
+**No separate `component-author` / `test-author` sub-agents** as of 2026-04-26. The per-test `qa-author` does its own component authoring during the drive (rules 1+4 of §7.1 5-rule self-checked locally; rules 2/3/5 evaluated by the orchestrator via `get_component_discovery` upfront + post-author promotion sweep). Earlier drafts split authoring into per-component + per-test sub-agents which created N-login friction with no architectural benefit.
 
 **Why this file exists:** every authoring-flow skill dispatches the same set of teammate sub-agents with the same structural prompt. Keeping one copy here prevents drift between skills. Each skill fills CONTEXT fields specific to its intent; INSTRUCTIONS blocks are copied verbatim.
 
 ## Phase 5 §5.1 — `intent_sources` mandatory in every dispatch
 
-EVERY authoring dispatch (`qa-author` / `test-author`) MUST include `intent_sources` in the CONTEXT fields. The reviewer's 13th attestation `intent_alignment` hard-blocks sign on empty `intent_sources`. Free-text source_type is the always-available minimum:
+EVERY `qa-author` dispatch MUST include `intent_sources` in the CONTEXT fields. The reviewer's 13th attestation `intent_alignment` hard-blocks sign on empty `intent_sources`. Free-text source_type is the always-available minimum:
 
 ```json
 {
@@ -31,56 +31,48 @@ For projects with a PRD / specs / dev_tasks, prefer linking those instead of (or
 
 ## qa-author dispatch contract
 
-When dispatching the `qa-author` sub-agent, compose a prompt with these sections in order. The skill fills in the CONTEXT fields; the INSTRUCTIONS block is copied verbatim.
+When dispatching the `qa-author` sub-agent (one per test journey), compose a prompt with these sections. The skill fills CONTEXT; INSTRUCTIONS go verbatim.
 
 ```
-## Test Authoring Assignment
+## Test Authoring Assignment — one journey
 
-### Context (filled by dispatching skill)
+### Context (filled by dispatching skill — the lead role)
 
 - **Intent:** [regression | version | migration]
-- **Scope:** [module name | suite ID + journey table | legacy test IDs]
-- **Suite ID:** [uuid — create_test_suite first, pass the id]
+- **Test journey description:** [what the user-visible behavior is + what should be true at the end. For migration: the legacy test's full scenario_blocks verbatim — that's your spec.]
+- **Suite ID:** [uuid — create_test_suite was already called]
 - **Suite Category:** [regression | version]
-- **Profile IDs / Roles:** [role]=[uuid], [role]=[uuid]
-- **Target feature or plan:** [what is being tested]
-- **Source priority:** [code + running app (regression), plan + code (version), existing blocks + code (migration)]
-- **Platform:** [bubble | react | native | ...]
-
-### Approved coverage (CONTRACT)
-[For version/regression: the Journey or Scope table the human already approved. Authors MUST implement every row with Status=Ready. MAY add edge cases. CANNOT drop planned flows.]
-[For migration: the list of legacy test IDs to convert, with any human notes about which may become agentic.]
-
-### Survey findings
-- **App URL:** [url]
-- **Key UI labels found:** [sidebar items, button text, form fields]
-- **Routes:** [routes discovered]
-- **User roles:** [roles + permissions]
-- **Existing coverage:** [what's already tested — do not duplicate]
-- **KB results:** [lessons from search_test_knowledge — platform quirks, timing issues, working patterns]
+- **gates_on_plan_phase:** [phase_id — only for version intent]
+- **Pre-acquired profile_id:** [uuid — the lead acquired one for the batch; use it to skip acquire_profile + avoid lock thrashing. If null, acquire your own.]
+- **Storage state path:** [.st4ck/state-<feature>.json — captured by lead after one shared login. Pass to the runner via --browser-mode=rehydrate to skip login. If null, login during your drive.]
+- **Profile role + properties:** [role + properties (used either for acquire OR validation that the pre-acquired profile matches)]
+- **Intent sources:** [≥1 entry — REQUIRED. PRD node IDs, spec section IDs, dev_task IDs, or {source_type:'free_text', source_text:'...'}]
+- **Existing component library:** [filtered get_components summary — what's already available]
+- **Candidate-component list:** [from get_component_discovery — components the orchestrator pre-evaluated against §7.1 rules 2/3/5. If a captured sub-sequence matches a candidate, author it as a component.]
+- **App URL / Base URL:** [url]
+- **Platform:** [bubble | react | ...]
+- **KB results (relevant subset):** [lessons from search_test_knowledge passed forward by the lead]
 
 ### INSTRUCTIONS (verbatim — do not paraphrase)
 
-Your first action MUST be `get_qa_methodology(section: "block_format")`. Keep the returned `methodology_key` — you will echo it in `methodology_attestation` on every create_test_case / modify_test_case call. It has a 2-hour TTL; re-fetch if expired.
+You drive ONE test journey end-to-end against the live app using the runner's primitive surface. You don't call `agent-browser` directly — the runner is the abstraction. You author components organically as you drive (the captured trace IS your verified work). At the end, you compose the test_case and return.
 
-Follow the methodology you just fetched. Key non-negotiables the server enforces:
+Your first actions MUST be in this order:
+1. `get_qa_methodology(section: "block_format")` — keep `methodology_key` for `methodology_attestation` on `create_test_case`. 2-hour TTL.
+2. `get_qa_methodology(section: "component_authoring")` — the canonical 5-rule + drive-and-decompose workflow + TRIAD requirement + size envelope. Same key.
 
-- Every component you reference must pass SELECTOR QUALITY RULE. Never bare tags (`querySelector('h1')`). For non-semantic elements with no ARIA role, use runner primitives `click_by_text` / `hover_by_text` / `type_by_text` with optional `scope: "dialog"`.
-- Every new component must complete the CODE + SNAPSHOT + KB TRIAD in `selector_notes` before `save_component`: (a) source file:line, (b) snapshot excerpt showing role/ref/wrapping, (c) cited KB entry ID or "searched, nothing matched". Missing any leg fails review.
-- Test interactively with agent-browser before saving any component. Never save untested.
-- DATA REALISM: every specific value a block clicks (category, merchant, option) MUST exist for the target profile at runtime — verify via snapshot, SELECT, or a fixture the test itself seeds. Hard-coding values that do not exist is a canonical failure.
-- Block structure: ≤15 actions per block. `role` on component-format frontend blocks (not `profile_id`). Backend blocks SELECT-only. Use UI navigation after login — never direct URLs.
-- Test ONE first. Author a single test, verify it can run, then batch the rest.
-- **Pre-sign smoke run — mandatory.** After authoring, run every test via `node st4ck/scripts/run-test.js <test_case_id> <base_url>`. Only tests that exit 0 may be handed off for review. For each passing test, capture the `execution_id` (from the runner's final `test_executions` row) and include it in the handoff — the reviewer needs it to sign. Tests that fail must be debugged and re-run to green BEFORE handoff; do not forward failures hoping review will catch up.
+Follow the workflow in your role-doc (`agents/qa-author.md`). Key non-negotiables the server enforces:
+
+- Drive with primitives (`click`, `fill`, `wait_until`, `snapshot`, `evaluate`, `press`, `select`, `check_box`, `hover`, `upload`, plus the LLM-driven `check`, `see`, `extract`, `do`). Send each as JSON over the runner's IPC. Never call `agent-browser` directly.
+- Selector quality: never bare tags. For non-semantic elements use the runner's `click_by_text` / `hover_by_text` / `type_by_text` with optional `scope: "dialog"`.
+- Every new component must complete the CODE + SNAPSHOT + KB TRIAD in `selector_notes` before `save_component`. Missing any leg fails review.
+- DATA REALISM: every specific value MUST exist for the profile at runtime. Verify via snapshot, project DB SELECT, or fixture-seeded.
+- Block structure: ≤15 actions per block. `role` on component-format frontend blocks (not `profile_id`). Backend blocks SELECT-only. UI navigation after login — never direct URLs.
+- Pre-sign smoke run is implicit — your drive IS the smoke. Capture the `execution_id` from your `--mode=qa` run (or by triggering qa-runner inline before returning) for the reviewer.
 
 ### Output
 
-When done, report:
-- Suite ID + list of test case IDs created
-- **Per test: `execution_id` from the passing smoke run** (the reviewer needs this)
-- Coverage mapping: which row of the approved table / which legacy test maps to which new test
-- Research artifact excerpt (`<sources_read>` must list every file you cited)
-- Any gaps you could not cover + reason
+Per the verdict schema in `agents/qa-author.md` — outcome (success/stuck), test_case_id, components_authored, components_reused, evidence (with live_snapshot_proof for stuck verdicts), kb_entries_created.
 ```
 
 ---

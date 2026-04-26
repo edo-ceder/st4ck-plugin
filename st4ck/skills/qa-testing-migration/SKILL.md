@@ -1,79 +1,105 @@
 ---
 name: qa-testing-migration
-description: Router skill that classifies legacy tests by migration shape (agentic, components_v1, components_v2, mixed) and dispatches to the correct path skill. Triggers on "migrate these tests", "convert to component format", "modernize tests", "upgrade components". Decides Path A (heavy, LLM-driven) vs Path B (light, mechanical) per test.
+description: Migrate legacy tests to the v2 component format. Triggers on "migrate these tests", "convert to component format", "modernize tests", "upgrade components". Classifies each test's shape via classify_test_migration_shape, then runs the appropriate internal branch (agentic re-author OR component-upgrade) inline. Per-component escalation between branches handled inline. Per plan §13.2 (consolidated 2026-04-26 — was three skills before).
 ---
 
-# QA Testing — Migration Router
+# QA Testing — Migration
 
-You are the **router** that decides HOW each test gets migrated. You don't migrate tests yourself — you classify them, then activate the correct path skill per group.
+**You — the current session agent — are the authoring lead.** Read the lead role-doc below; that's your orchestration playbook. Migration is just a different intent for the same orchestration shape — drive the candidate-component discovery, dispatch `qa-author` teammates, sweep promotions, sign, run.
 
-## Why two paths?
+@${CLAUDE_PLUGIN_ROOT}/shared/authoring-lead-role.md
 
-Per plan §13.2 there are two genuinely different migration jobs hiding inside "migrate these tests":
+This skill replaces three earlier skills (router + Path A + Path B); collapsed 2026-04-26 because every dispatch boundary is a place agents lose context.
 
-| Shape | What it is | Path | Cost |
+## Two internal branches
+
+Migration is a single decision tree. Per test, you classify the shape and run the right branch inline.
+
+| Shape | Branch | Cost target | What happens |
 |---|---|---|---|
-| **agentic** | Every action is `{action, expected}` (legacy free-text). Server has no idea what the test does — only the agent that runs it. | **Path A — heavy** (`qa-testing-migrate-agentic-to-v2`) | ~10k tokens/test (full Agent Teams authoring cycle) |
-| **components_v1** | Only `{component, method}` actions, but components use legacy `eval_sequence` (not `sequence`). Mostly metadata + structural upgrade. | **Path B — light** (`qa-testing-upgrade-components-v1-to-v2`) | ~2k tokens/component (mechanical + KB search) |
-| **components_v2** | Already on `sequence`. No migration needed. | — | 0 |
-| **mixed** | Both shapes coexist in one test. | **Path A — heavy** (LLM has to disentangle) | ~10k tokens/test |
-| **empty** | No actions. | — | Skip; flag the test as broken. |
+| **agentic** | Agentic re-author | ~10k tokens/test | qa-author drives the journey from scratch using primitives; saves new components + new test_case; old test atomically swapped at the end |
+| **components_v1** | Component upgrade | ~2k tokens/component | mechanical `eval_sequence`→`sequence` translation via `primitive_registry`; fresh snapshot per component; targeted citation gathering; test_case `scenario_blocks` usually unchanged |
+| **components_v2** | Skip | 0 | already migrated; defensive case |
+| **mixed** | Agentic re-author | ~10k tokens/test | LLM has to disentangle; treat as agentic |
+| **empty** | Skip | 0 | flag the test as broken |
 
-If you blindly run Path A on a Shape-B test you waste 5× the tokens. If you run Path B on a Shape-A test it just fails. The router exists so you never make that mistake.
+**Per-component escalation between branches.** During the component-upgrade branch, individual components can hit cases the mechanical translator can't handle (exotic eval, persisted snapshot ref, unreachable component, TRIAD-rejection). Those components escalate to the agentic re-author flow inline — only that component re-authors, the rest of the test's components keep their mechanical path. Recovery is per-component, not per-test.
 
 ## First actions — mandatory in this order
 
 1. **`get_qa_methodology(section: "process")`** — orchestration rules.
+2. **`get_qa_methodology(section: "component_authoring")`** — the canonical 5-rule + drive-and-decompose workflow + TRIAD + size envelope. Both branches need this.
+3. **Classify the scope.** `classify_test_migration_shape({suite_id})` (or `{test_id}` for a single test, or `{scope: "project"}` for the whole project). Returns per-test shape + aggregate counts + estimated token budget.
+4. **Probe Agent Teams availability** (per the lead role-doc). Pick mode for the WHOLE migration — Team or sub-agent.
+5. **Show the user the classification + budget** — *"Suite has X agentic, Y components_v1, Z components_v2, W mixed, V empty. Estimated budget: ~$N. Proceed?"* — wait for human approval before fanning out.
 
-2. **Classify the scope** — call `classify_test_migration_shape({suite_id})` (or `{test_id}` for a single test, or `{scope: "project"}` for the whole project). The MCP tool returns:
-   - per-test: `{test_id, test_name, suite_id, shape}`
-   - aggregate: `{counts, total, estimated_token_budget, avg_components_per_test}`
+## Step 5.5 — Optional pre-seed (when N>20 legacy tests)
 
-3. **Show the user the classification + budget** — *"Suite has X agentic, Y components_v1, Z components_v2, W mixed, V empty. Estimated budget: ~$N. Proceed?"*. Wait for human approval before fanning out.
+If the project has many legacy tests AND the candidate-component list (from `get_component_discovery`) shows clear repeated patterns: dispatch a small batch of `qa-author` teammates with a **library-only brief** (drive the candidate flows, save_component, no test composition). The library is then warm before per-test migration runs — speeds up both branches.
 
-## Dispatch
+This used to be a separate `/st4ck:bootstrap-components` skill; folded in here 2026-04-26 because "how to author a component" is one methodology section anyone can pull on demand, and pre-seeding is just a different invocation context for `qa-author`.
 
-Per the classification:
+## Branch A — Agentic re-author (Shape-A or mixed)
 
-| Group | Activate skill |
-|---|---|
-| `agentic` + `mixed` | `qa-testing-migrate-agentic-to-v2` (Path A) |
-| `components_v1` | `qa-testing-upgrade-components-v1-to-v2` (Path B) |
-| `components_v2` | report as already migrated; skip |
-| `empty` | report as broken; do not migrate |
+Same orchestration shape as `/st4ck:regression-author`:
 
-Pass the matching test IDs to each skill.
+1. **Derive `intent_sources`** — read test metadata (name, description, suite), linked PRD nodes / specs / dev_tasks if present, else populate `{source_type:'free_text', source_text: <inferred from description + action list>}`.
+2. **Component discovery (if not already done in Step 5.5).** `get_component_discovery({intent_sources, module})`.
+3. **Pre-acquire profile + capture storageState** for the batch.
+4. **Dispatch one `qa-author`** per legacy test (parallel via multiple `Agent` calls; up to 5 concurrent). Pass each: the legacy test's full `scenario_blocks` (verbatim, as the journey description), `intent_sources`, candidate-component list, existing component library, `profile_id` + storageState path.
+5. **Verdict recovery** mode-aware (Team mode → SendMessage; sub-agent mode → re-dispatch fresh).
+6. **Promotion sweep** across the just-authored test_cases.
+7. **Dispatch fresh `qa-reviewer`** per test for sign.
+8. **Atomic swap** — for each newly signed test, atomically update the OLD test_case row to use the new `scenario_blocks` + new `journey_signature` + new `linked_execution_id`; clear `legacy_signature` flag. Status stays `signed`. Per §13.4 partial-upgrade preservation: do NOT delete the old test until the new one is signed + has a passing execution.
+9. **Dispatch `qa-runner`** for execution against the target environment.
 
-## Failure cascade — Path B may demote to Path A
+## Branch B — Component upgrade (Shape-B)
 
-Path B can encounter cases it cannot handle mechanically:
-- Component uses an exotic eval that doesn't map to a primitive
-- Component contains a persisted snapshot ref that the server now rejects
-- Component cites an unreachable git path
-- TRIAD enforcement fails on save
+This branch is mostly mechanical. You don't always need to dispatch `qa-author` teammates — many steps run inline in your context.
 
-In each case Path B returns a `demote_to_path_a` verdict for that test. The router catches it and re-dispatches the test through Path A.
+**Per-component work** (runs once per unique component referenced by the test, not once per test):
+
+1. **Idempotency check** — if `component.sequence IS NOT NULL` already, skip (v2 upgrade already done).
+2. **Translate `eval_sequence` → `sequence`** via `primitive_registry` lookup:
+   - For each step in `eval_sequence`, look up its action verb in `primitive_registry` (either `current_name` or `deprecated_names`) → get the stable `primitive_code`.
+   - Emit `{primitive_code: "p.X", ...rest_of_step}`. Preserve locator shape (by/value/scope).
+   - If a step has no primitive-code equivalent: **escalate this component to Branch A** (full re-author). Record reason. Continue with the rest of the test's components.
+3. **Server-side ref-rejection check** — scan emitted `sequence` for any `ref: "eN"` fields. If any → **escalate this component to Branch A** (v1 component persisted a snapshot ref; needs re-snapshot via fresh drive).
+4. **Capture fresh `snapshot_excerpt`** — spin up `st4ck-runner record` against the component's target URL (recovered from `recording_metadata` if present; else from test's first block), take a snapshot. If component can't be reached in isolation → **escalate to Branch A**.
+5. **Gather `source_citations`** — for each `selector_notes.legacy_text` mention of a file path, read the cited file at current `git_sha` and produce a structured `{path, line, git_sha, note}` entry. If legacy_text doesn't cite paths (most v1 components don't), dispatch a small `qa-author` teammate with a "citation-gathering brief" (read source + KB search; no driving). ~1-2 LLM calls per component.
+6. **Search `automation_lessons`** — `search_test_knowledge({query: <component-name> + <app-framework>})`. Attach hit IDs to `kb_entries`. If no hits, set sentinel `["searched, nothing matched"]`.
+7. **Save as v+1** — `save_component` with `sequence`, full TRIAD, `recording_metadata.recorded_via='v1_upgrade'`, mark old v as `deprecated_versions`.
+8. **Server-side TRIAD validation** fires at save. If rejected → escalate THAT component to Branch A; rest can still upgrade mechanically.
+
+**Per-test work** (after all referenced components upgraded):
+
+1. **`scenario_blocks` change required?** — usually NO. Block shape `{component, method, params}` doesn't change; only the underlying component's storage format did. If any block had an inline action that gets promoted to a component during upgrade (rare), update that block.
+2. **Derive + attach `intent_sources`** — same logic as Branch A step 1.
+3. **Dispatch `qa-runner`** for smoke run + determinism check.
+4. **Dispatch fresh `qa-reviewer`** for 13-item attestation sign.
+5. **Atomic promote.**
 
 ## Order
 
-Author for parallelism but **do not auto-fan-out** — the user must approve the budget after classification. After approval, run Path A and Path B in parallel (they don't share state); within each path, tests can also run in parallel up to the per-path concurrency budget.
+Run Branch A and Branch B in parallel where the classification has both shapes — they don't share state. Within each branch, tests run in parallel up to the concurrency budget (5 default, 8 with `ST4CK_MAX_CONTEXTS_PER_DAEMON=8`).
 
 ## Don't
 
-- Don't skip the classification. The whole point of the router is the classification.
-- Don't override the human gate. If they say "no, hold on the agentic ones," respect it.
-- Don't fold both paths into a single LLM dispatch. The whole reason Path B exists is to NOT pay LLM costs for tests that don't need them.
-- Don't run Path A on a Shape-B test "because it's safer." Path A on Shape-B does the same work the agent already did — wasted spend.
+- **Don't skip the classification.** The whole point of branching is matching cost to shape.
+- **Don't override the human gate.** Show the user the budget; wait for approval.
+- **Don't fold both branches into a single qa-author dispatch.** Branch B's mechanical translation is much cheaper than re-authoring; Branch A on Shape-B duplicates work the legacy author already did.
+- **Don't run Branch A on a Shape-B test "because it's safer."** It's not safer — it's more expensive and more brittle.
+- **Don't delete the legacy test** until the new test is signed + green. Per §13.4 partial-upgrade preservation.
 
 ## Return to the user
 
 A summary table:
 
 ```
-Suite: <name>
-  Path A migrations: M signed / N total
-  Path B upgrades:   K signed / L total
-  Path B → A demotions: D
+Migration: <suite-name or scope>
+  Branch A re-authors: M signed / N total
+  Branch B upgrades:   K signed / L total
+  Component escalations B → A: D
   Skipped (already v2):  S
   Skipped (empty):       E
   Estimated total spend: $X
@@ -81,3 +107,9 @@ Suite: <name>
 ```
 
 Plus: per-test verdict with link to the test in the st4ck UI.
+
+---
+
+## Dispatch contracts
+
+@${CLAUDE_PLUGIN_ROOT}/shared/qa-dispatch-contracts.md

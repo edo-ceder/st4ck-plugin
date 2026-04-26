@@ -96,17 +96,21 @@ Present to the user:
 
 1. `get_test_profiles()` — pass IDs/roles to the author.
 2. `create_test_suite(name, category: "regression")` — pass the ID to the author.
+3. **`get_component_discovery({intent_sources, module})`** — combines existing-tests / dev-plan / PRD / codebase signals to produce a **candidate-component list** with cross-test reuse pre-evaluated (§7.1 5-rule rules 2/3/5). The candidate list will be handed to each qa-author.
+4. **Probe Agent Teams availability.** Try `Agent(subagent_type:'qa-author', ...)` with a no-op prompt + `SendMessage` to that teammate. If `SendMessage` returns successfully → **Team mode** (multi-turn teammates kept alive). If it errors → **sub-agent mode** (one-shot dispatch). Pick mode for the WHOLE orchestration.
+5. **Pre-acquire profile + capture storageState** (recommended): `acquire_profile({role, environment_id})` once for the whole batch; drive a quick login session yourself; capture storageState to `.st4ck/state-<module>.json`. Pass `profile_id` + storageState path into each qa-author dispatch so teammates skip login.
 
-### Step 6 — Dispatch the team
+### Step 6 — Dispatch one qa-author per test journey
 
-Per the lead role-doc above, you dispatch leaf teammates yourself. Pick the shape:
+Per the lead role-doc above, you dispatch leaf teammates yourself. The team shape is:
 
-- **Team-of-N (default for any non-trivial scope):** dispatch one `component-author` per missing component (run multiple in parallel via multiple `Agent` tool calls in one message), then dispatch one `test-author` per test_case. See `shared/qa-dispatch-contracts.md` for the templates.
-- **Team-of-1 fallback (one component + one assertion only):** dispatch `qa-author` instead — combines discovery + component + test in one teammate. Use sparingly.
+- **One `qa-author` per test in the approved scope** (parallel via multiple `Agent` tool calls in one message — up to 5 concurrent).
+- Each qa-author drives ONE Session against its journey, captures primitives, decomposes the trace into save_component(s) + create_test_case at the end. See `shared/qa-dispatch-contracts.md` for the dispatch template.
+- Pass each teammate: the journey description, `intent_sources`, the candidate-component list (from Step 5), the existing component library, the pre-acquired `profile_id` + storageState path.
 
-Common to both: include `intent_sources` in every CONTEXT. Intent: **regression**. Source priority: code + running app (not PRD/specs unless the user provided them).
+Intent: **regression**. Source priority: code + running app (not PRD/specs unless the user provided them).
 
-### Step 7 — Validate teammate verdicts
+### Step 7 — Validate teammate verdicts (mode-aware verdict recovery)
 
 As each teammate returns:
 - Suite ID set? Test IDs listed?
@@ -114,13 +118,25 @@ As each teammate returns:
 - Every referenced component exists (`get_components()` cross-check)?
 - Research artifact has `<sources_read>` with every cited file?
 
-If gaps, re-dispatch a fresh teammate with the specific missing rows.
+If a teammate returns `outcome: 'stuck'`, route per the §5.7 escalation matrix in the lead role-doc. **For recoverable stucks where you have new info to share:**
+- **Team mode**: `SendMessage` the same teammate with the new info.
+- **Sub-agent mode**: Re-dispatch a fresh `qa-author` with original spec + new info appended.
+
+### Step 7.5 — Promotion sweep (cross-test 5-rule decisions)
+
+After all qa-authors return, scan returned `test_cases` for **inline primitive sub-sequences** that appear in ≥2 tests (§7.1 rules 2/3/5 — repeated patterns the per-test teammates couldn't evaluate alone).
+
+For each repeated sequence:
+- Author it as a proper component via `save_component` (TRIAD evidence: file:line + snapshot excerpt + KB result).
+- For each test_case that contained the inline sequence: `modify_test_case` to replace the inline primitives with the new component call.
+
+Typical regression contracts (5-15 tests) usually promote 2-5 components from the inline noise.
 
 ### Step 8 — Dispatch qa-reviewer (INDEPENDENT — must NOT be the author)
 
-Use the `qa-reviewer dispatch contract` from `shared/qa-dispatch-contracts.md`. Always a fresh instance — never the same teammate that authored the test. Server hard-rejects signatures with `is_independent_reviewer: "no"`.
+Use the `qa-reviewer dispatch contract` from `shared/qa-dispatch-contracts.md`. Always a fresh instance. Server hard-rejects signatures with `is_independent_reviewer: "no"`.
 
-If review finds issues: re-dispatch a fresh `test-author` (not the original) with the specific fixes, then re-dispatch a fresh `qa-reviewer`. Loop until zero failures.
+If review finds issues: re-dispatch the same `qa-author` (Team mode) or a fresh one (sub-agent mode) with reviewer's findings, then re-dispatch a fresh qa-reviewer. Loop until zero failures.
 
 ### Step 9 — Dispatch qa-runner (smoke + execution)
 

@@ -1,10 +1,10 @@
 # Authoring Lead — orchestration role for the current session
 
-This is **not a sub-agent.** It's the role description the **current session agent** adopts when a QA authoring skill (`qa-testing-regression` / `qa-testing-version` / `qa-testing-bootstrap-components` / `qa-testing-migrate-agentic-to-v2`) is active. The skills `@import` this file so the current session has the orchestration playbook in context.
+This is **not a sub-agent.** It's the role description the **current session agent** adopts when a QA authoring skill (`qa-testing-regression` / `qa-testing-version` / `qa-testing-migration`) is active. The skills `@import` this file so the current session has the orchestration playbook in context.
 
-**You — the current session agent — are the lead.** Your job is to take a top-level authoring request, run discovery, and dispatch focused **teammate sub-agents** (`component-author`, `test-author`, `qa-reviewer`, `qa-runner`) for the actual authoring + review + execution work. You hold the task list and route verdicts.
+**You — the current session agent — are the lead.** Your job is to take a top-level authoring request, run discovery, dispatch one **`qa-author`** teammate per test journey, run a promotion sweep, dispatch a fresh **`qa-reviewer`** per test for sign, then dispatch **`qa-runner`** for execution. You hold the task list and route verdicts.
 
-You do NOT write test cases or components yourself in your own context. That's what teammates are for — they each get a fresh context window.
+You do NOT write test cases or components yourself in your own context. That's what `qa-author` teammates are for — they each get a fresh context window.
 
 > **Why this is a role-doc, not a sub-agent.** Earlier versions of this plugin defined `authoring-lead` as a sub-agent dispatched via the `Agent` tool. That was structurally wrong: a sub-agent in CC sits one level down and cannot dispatch further teammates (no recursive `Agent` access). The lead must be the parent. The skills enact the role.
 
@@ -12,60 +12,66 @@ You do NOT write test cases or components yourself in your own context. That's w
 
 1. **`get_qa_methodology(section: "process")`** — load the orchestration methodology. Don't skip; without this you can't validate what your teammates produce.
 
-2. **`get_skill_context(skill_name: "qa-testing")`** — refresh on the platform-wide testing methodology that your team will inherit when you dispatch.
+2. **`get_qa_methodology(section: "component_authoring")`** — the canonical 5-rule + drive-and-decompose workflow + TRIAD requirement + size envelope. Same key. You'll pass guidance from this section to teammates if they need it; teammates also pull it themselves on dispatch.
 
-3. **Read the dispatch envelope.** If your invocation message contains `mode: "bootstrap"` (or "Bootstrap mode = true"), you're under `/st4ck:bootstrap-components` — see the **Bootstrap mode** section below before continuing. The default mode is `regression` (full test authoring).
+3. **`get_skill_context(skill_name: "qa-testing")`** — refresh on the platform-wide testing methodology your teammates inherit on dispatch.
 
-4. **Run discovery** — call `get_component_discovery({intent_sources, module})` if you have intent sources, otherwise `get_components()` to read existing library + the test scan signals. This produces your **candidate components list**. See §4.1 of the plan.
+4. **Run discovery** — call `get_component_discovery({intent_sources, module})` if you have intent sources, otherwise `get_components()` to read existing library + the test scan signals. This produces your **candidate-component list** with cross-test reuse pre-evaluated (5-rule rules 2/3/5 from §7.1). The list goes to each qa-author dispatch so per-test teammates know what's already established as reusable.
 
-5. **Pick the human gate** — if running under `/st4ck:regression-author`: present the scope (tests + journeys) to the user and wait for approval. If running under `/st4ck:qa-testing-version`: read the plan-phase Journey table verbatim — that's the test contract. In `bootstrap` mode there's no test scope to present — just summarise the candidate-component list and ask the user to approve.
+5. **Probe Agent Teams availability** (mode probe). Try `Agent(subagent_type:'qa-author', ...)` with a no-op prompt + `SendMessage` to that teammate. If `SendMessage` returns successfully → **Team mode** (multi-turn teammates kept alive for back-and-forth). If it errors → **sub-agent mode** (one-shot dispatch). Pick mode for the WHOLE orchestration; do NOT mix within one run.
 
-## Bootstrap mode (`/st4ck:bootstrap-components` invocations)
+6. **Pre-acquire profile + capture storageState** (recommended). `acquire_profile({role, environment_id})` once for the whole batch; drive a quick login Session yourself; capture storageState to `.st4ck/state-<feature>.json`. Pass `profile_id` + storageState path into each qa-author dispatch — teammates spin up the runner with `--browser-mode=rehydrate <path>` to skip login. Avoids N-login friction across N teammates.
 
-When dispatched with `mode: "bootstrap"`, your loop is **component-only** — there are no tests in scope. Behavior changes:
-
-- **Skip step 5's "Pick the human gate"** for tests. Show the candidate-component list and ask the user to confirm before authoring.
-- **Skip the entire "for each test in scope" branch of the main Loop.** You never dispatch `test-author` or `qa-reviewer` in bootstrap mode.
-- **Final report** is a *component coverage* report, not a test coverage report: list every component the team produced (with `signed: true|false`), every component that came back `stuck` (with the dev_task you filed), and every component that was already in the library and skipped.
-- **Verdict shape returned to the caller (the bootstrap skill):** `{ mode: "bootstrap", components_authored: [...], components_skipped: [...], stuck_components: [...], dev_tasks_filed: [...] }`. Do NOT return a `test_case_id` or a smoke verdict — those fields don't exist in this mode.
-
-In all other respects (verdict judgement, evidence enforcement, escalation matrix, hard rules below), bootstrap mode behaves identically. The only difference is you never compose tests; you only seed the component library.
+7. **Pick the human gate** — present the scope (tests + journeys) to the user and wait for approval before fanning out. The journeys you dispatch are the contract.
 
 ## Team members
 
-Your team has four leaf teammates. Dispatch via the Agent tool with `subagent_type` matching the agent name. Each one runs in its own context window. Dispatch a **team of 1** if scope is small (single component, single test) — the architecture is the same; you just spin fewer teammates.
+Three leaf teammates. Dispatch via the Agent tool with `subagent_type` matching the agent name. Each runs in its own context window.
 
 | Teammate | When to dispatch | Returns |
 |---|---|---|
-| `component-author` | One per candidate component that doesn't exist yet OR exists but its method/params differ. | Structured verdict: `{outcome: success|stuck, component_id?, stuck_kind?, evidence}`. |
-| `test-author` | One per test case in scope. Only after all required components are ready. (Or use `qa-author` as a single-agent fallback when scope is one component + one assertion.) | `{test_case_id, smoke_status: passed|failed}`. |
-| `qa-reviewer` | One per test_author verdict that returned green. **Must NOT be the author.** Server enforces the independence rule. | `{signed: true|false, signed_environments?: [...]}`. |
-| `qa-runner` | After sign — one per test (or one per suite) you want executed against an environment. The runner drives the plugin's `run-test.js` (or `@st4ck/runner`) and handles agentic-block pauses for you. | `{execution_id, status: passed|failed, blocks_run, evidence}`. |
+| `qa-author` | **Primary authoring role.** One per test journey in the contract. Drives a single Session with primitives, captures the trace, decomposes into save_component(s) + create_test_case at end. | `{outcome: success|stuck, test_case_id, components_authored, components_reused, evidence, kb_entries_created}`. |
+| `qa-reviewer` | One per qa-author verdict that returned green. **Must NOT be the qa-author teammate.** Server enforces independence at sign time. Always a fresh instance. | `{signed: true|false, signed_environments?: [...]}`. |
+| `qa-runner` | After sign — one per test (or one per batch). Drives the plugin's `run-test.js` and handles agentic-block pauses inline. | `{outcome, results: [...], totals, stop_reason?}`. |
 
-You may keep teammates alive across multiple turns via `SendMessage` for back-and-forth — e.g., the test-author returns `stuck:component_missing`, you re-dispatch the component-author with a fix, then `SendMessage` the original test-author with the new component_id so it can resume without re-running discovery. Use SendMessage for urgent cross-talk; route durable signals through `dev_tasks` and `test_coverage_events`.
+In **Team mode**, you can keep `qa-author` teammates alive across multiple turns via `SendMessage` for back-and-forth — useful when reviewer findings come back and you want the same teammate (with its KB hits / source reads / snapshots in context) to fix rather than re-warm a fresh teammate. In **sub-agent mode**, re-dispatch a fresh `qa-author` instead.
+
+`qa-reviewer` is always a fresh instance in either mode (independence rule).
 
 ## Loop
 
 ```
-discovery → for each candidate component (not in library):
-                dispatch component-author → receive verdict → judge:
-                  success                  → mark ready, continue
-                  stuck:selector_unresolvable    → dev_task(engineering, component_failure)
-                  stuck:missing_prerequisite     → dev_task(qa, authoring_triage) + halt this candidate
-                  stuck:st4ck_primitive_bug      → dev_task(engineering, st4ck_platform_issue)
-                  stuck:ux_suspect               → dev_task(product, component_failure, urgency=medium)
-                  stuck:unclear                  → dev_task(qa, authoring_triage, urgency=low)
-            once all components ready:
-                for each test in scope:
-                    dispatch test-author        → receive verdict
-                    if smoke_status === passed:
-                        dispatch qa-reviewer    → receive sign verdict
-                        if signed:
-                            done
-                        else:
-                            dispatch component-author or test-author with reviewer's findings
-                            re-dispatch qa-reviewer (always a different fresh teammate from author)
-            final: emit a coverage report to the user
+get_component_discovery + mode probe + pre-acquire profile + capture storageState
+                                |
+                                v
+For each test journey in the approved contract (parallel up to concurrency cap):
+    dispatch qa-author → receive verdict → judge:
+      outcome:'success'                    → mark test ready for review
+      outcome:'stuck' kinds:
+        selector_unresolvable              → dev_task(engineering, component_failure)
+        backend_error                      → dev_task(engineering, st4ck_platform_issue)
+        missing_prerequisite               → dev_task(qa, authoring_triage)
+        data_setup_blocker                 → dev_task(qa, authoring_triage)
+        st4ck_primitive_bug                → dev_task(engineering, st4ck_platform_issue, urgency=high)
+        ux_suspect                         → dev_task(product, component_failure, urgency=medium)
+        cross_validation_failed            → re-dispatch (Team: SendMessage; sub-agent: fresh)
+        intent_unclear                     → dev_task(qa, authoring_triage) + escalate to user
+        unclear                            → dev_task(qa, authoring_triage, urgency=low)
+
+Promotion sweep (cross-test 5-rule decisions):
+    Scan returned test_cases for inline primitive sub-sequences appearing in ≥2 tests.
+    For each repeated sequence: save_component (TRIAD) + modify_test_case to swap inline → component call.
+
+For each authored test:
+    dispatch qa-reviewer (FRESH instance) → receive sign verdict
+      if signed: done
+      else: re-dispatch qa-author (Team: same teammate via SendMessage; sub-agent: fresh) with
+            reviewer's findings, then re-dispatch a fresh qa-reviewer
+
+For each signed test:
+    dispatch qa-runner → receive execution verdict (failures auto-route to dev_tasks per §5.5)
+
+Final: emit coverage report to the user.
 ```
 
 ## Pre-dispatch contract sanity check (HARD RULE)
