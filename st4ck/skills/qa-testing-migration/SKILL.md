@@ -18,12 +18,15 @@ Migration is a single decision tree. Per test, you classify the shape and run th
 | Shape | Branch | Cost target | What happens |
 |---|---|---|---|
 | **agentic** | Agentic re-author | ~10k tokens/test | qa-author drives the journey from scratch using primitives; saves new components + new test_case; old test atomically swapped at the end |
-| **components_v1** | Component upgrade | ~2k tokens/component | mechanical `eval_sequence`→`sequence` translation via `primitive_registry`; fresh snapshot per component; targeted citation gathering; test_case `scenario_blocks` usually unchanged |
+| **components_v1** (clean) | Component upgrade | ~2k tokens/component | mechanical `eval_sequence`→`sequence` translation via `primitive_registry`; fresh snapshot per component; targeted citation gathering; test_case `scenario_blocks` usually unchanged |
+| **components_v1** (`likely_demotes_to_path_a: true`) | Agentic re-author | ~10k tokens/test | classifier emitted `path_b_blockers[]` — Bubble eval workarounds, branch pseudo-step, race/iteration history. Mechanical translation will lose the workarounds; route directly to Path A and skip the demotion thrash |
 | **components_v2** | Skip | 0 | already migrated; defensive case |
 | **mixed** | Agentic re-author | ~10k tokens/test | LLM has to disentangle; treat as agentic |
 | **empty** | Skip | 0 | flag the test as broken |
 
-**Per-component escalation between branches.** During the component-upgrade branch, individual components can hit cases the mechanical translator can't handle (exotic eval, persisted snapshot ref, unreachable component, TRIAD-rejection). Those components escalate to the agentic re-author flow inline — only that component re-authors, the rest of the test's components keep their mechanical path. Recovery is per-component, not per-test.
+**Path-B-blocker pre-routing (Phase 6.0).** The `classify_test_migration_shape` response now includes per-test `path_b_blockers: string[]` plus a convenience `likely_demotes_to_path_a: boolean`. Route any `components_v1` test where `likely_demotes_to_path_a === true` to Branch A (agentic re-author) immediately — do NOT attempt the component-upgrade branch on it. The classifier sees: v1 `{type:"branch"}` pseudo-steps, MouseEvent/dispatchEvent eval workarounds, atomic-select patterns, KB-workaround references in description, race/iteration history in change_log. Surface `path_b_blockers[]` to the user in the budget approval message so they can see WHY a v1 test is being routed Path A.
+
+**Per-component escalation between branches.** Even within the clean `components_v1` slice, individual components can hit cases the mechanical translator can't handle (exotic eval, persisted snapshot ref, unreachable component, TRIAD-rejection). Those components escalate to the agentic re-author flow inline — only that component re-authors, the rest of the test's components keep their mechanical path. Recovery is per-component, not per-test.
 
 ## First actions — mandatory in this order
 
@@ -37,13 +40,15 @@ Migration is a single decision tree. Per test, you classify the shape and run th
 
 If the project has many legacy tests AND the candidate-component list (from `get_component_discovery`) shows clear repeated patterns: dispatch a small batch of `qa-author` teammates with a **library-only brief** (drive the candidate flows, save_component, no test composition). The library is then warm before per-test migration runs — speeds up both branches.
 
+**Precedence over §5.6.** If §5.6 (mandatory bootstrap) applies — i.e. `summary_meta.is_fresh_project === true` — run §5.6 FIRST and SKIP §5.5. The bootstrap component authored in §5.6 already serves as the project's reference idiom, and a fresh-project state means there are no candidate-component patterns to pre-seed against yet. Once §5.6 completes, you can run a smaller §5.5-style pre-seed mid-sweep if patterns emerge from the first batch of migrated tests.
+
 This used to be a separate `/st4ck:bootstrap-components` skill; folded in here 2026-04-26 because "how to author a component" is one methodology section anyone can pull on demand, and pre-seeding is just a different invocation context for `qa-author`.
 
 ## Step 5.6 — Mandatory bootstrap when project has zero v2 components (Phase 6.1)
 
 Before dispatching ANY per-test migration, check whether the project has at least one signed v2 component to anchor agent dispatches against. Without a reference, every dispatched `qa-author` invents its own conventions — particularly costly on no-code platforms (Bubble, Retool) where idiomatic patterns aren't obvious from the page DOM.
 
-**Detection:** call `get_components({summary: true})`. Count entries where `signed === true` AND the component is v2 (`step_count > 0` indicates `sequence` is populated). If that count is 0, the project is in **fresh-project state**.
+**Detection:** call `get_components({summary: true})`. The response carries `summary_meta.is_fresh_project: boolean` — that flag is the canonical signal and is computed server-side as "zero components where `is_v2 === true && signed === true`". Read it directly; do NOT re-derive from the per-component `step_count` (kept for back-compat as the v1 `eval_sequence` length, which is non-zero on every legacy component and would falsely suggest the project has v2 coverage when it has none).
 
 **Action when fresh-project state is detected:**
 
@@ -59,7 +64,9 @@ Before dispatching ANY per-test migration, check whether the project has at leas
 
 **Why this is mandatory, not optional:** without a reference, the first 3-5 migrated components produce inconsistent conventions; later components inherit drift; reviewer load triples chasing inconsistencies. One signed reference upfront amortizes across the whole sweep.
 
-**When to skip:** project already has ≥1 signed v2 component (`get_components` returned a non-zero count with `signed === true && step_count > 0`).
+**When to skip:** `summary_meta.is_fresh_project === false` (the project already has ≥1 signed v2 component). The skip condition is read directly from the summary_meta flag — do not compute it from `step_count` (v1 length, kept for back-compat).
+
+**Updating §4 attestation for platform-native bootstrap.** If the bootstrap component is closed-loop (Bubble/Retool/etc.), the qa-reviewer dispatch brief MUST include the canonical evidence-attestation tokens the server now requires for `verdict: "approved"`: one of `editor_url_inspected`, `screenshot_verified`, `element_id_matched`, `platform_artifacts_reviewed` in `checked_items`, OR a `notes` field that quotes the literal `editor_url` (or its hostname). Generic notes will be rejected by `sign_component_review` per Phase 6.1.
 
 ## Branch A — Agentic re-author (Shape-A or mixed)
 

@@ -3,7 +3,7 @@ name: migrate-agentic-to-v2
 description: Forwarding stub. This skill was consolidated into qa-testing-migration on 2026-04-26 (plan §13.2, mid-12). Activate qa-testing-migration instead — it covers Path A (heavy re-author) AND Path B (light component-upgrade) inline, with classify_test_migration_shape selecting the branch per test.
 ---
 
-# upgrade-components-v1-to-v2 — consolidated
+# migrate-agentic-to-v2 — consolidated
 
 This skill name was retired on **2026-04-26** when the migration paths were consolidated into a single skill (plan §13.2, mid-12 changelog).
 
