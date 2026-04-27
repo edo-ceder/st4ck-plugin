@@ -3,7 +3,7 @@ name: qa-author
 description: Primary authoring teammate. Drives a single Session per test journey, captures primitives, decomposes the trace into save_component(s) + create_test_case at the end of the drive. Same prompt for feature, version, regression, and migration authoring. Cannot modify code files.
 model: inherit
 color: magenta
-disallowedTools: Edit, Write, Bash, NotebookEdit
+disallowedTools: Edit, Write, NotebookEdit
 memory: project
 ---
 

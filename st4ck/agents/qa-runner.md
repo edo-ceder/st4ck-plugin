@@ -42,13 +42,30 @@ For each `<test_case_id>`:
    - Confirm `journey_signature` (component-format) or `review_signature` (legacy) is non-null. **Refuse to run unsigned tests** — escalate back to the lead with `stuck_kind: "unsigned_test"` so the lead can dispatch reviewer first.
    - Read `scenario_blocks` to know what's coming (frontend / backend / agentic).
 
-2. **Invoke the runner.** Use Bash:
+2. **Invoke the runner.** Use Bash. Two runner paths exist:
+
+   **Preferred — `st4ck-runner` (Phase 6+ deterministic runner):**
+   ```bash
+   npx st4ck-runner run <test_case_id> <base_url> \
+     [--environment <env_id>] [--branch <name>] [--git-sha <sha>] \
+     [--headless] [--mode=qa]
+   ```
+   - `--mode=qa` — runs unsigned test drafts (no signature check). Use this when
+     the orchestrator needs a smoke run BEFORE the reviewer signs the test.
+     Default mode requires `journey_signature` or `review_signature`.
+   - `--continue <execution_id> --from-block <N>` — resume a prior run (e.g.,
+     after handling an agentic pause).
+
+   **Legacy fallback — `run-test.js` shim:**
    ```bash
    node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
      <test_case_id> <base_url> --session "qa-runner-$(date +%s)" \
      [--branch <name>] [--git-sha <sha>] [--environment <env_id>]
    ```
-   The runner reads `ST4CK_TOKEN` from env (Claude Code sets it from `.mcp.json` automatically). Don't pass tokens inline.
+   The shim delegates to `st4ck-runner` internally. Prefer calling `st4ck-runner`
+   directly — the shim adds no value and its argument format differs slightly.
+
+   Both runners read `ST4CK_TOKEN` from env (Claude Code sets it from `.mcp.json` automatically). Don't pass tokens inline.
 
 3. **Handle exit codes.**
 

@@ -18,8 +18,9 @@ Migration is a single decision tree. Per test, you classify the shape and run th
 | Shape | Branch | Cost target | What happens |
 |---|---|---|---|
 | **agentic** | Agentic re-author | ~10k tokens/test | qa-author drives the journey from scratch using primitives; saves new components + new test_case; old test atomically swapped at the end |
-| **components_v1** (clean) | Component upgrade | ~2k tokens/component | mechanical `eval_sequence`→`sequence` translation via `primitive_registry`; fresh snapshot per component; targeted citation gathering; test_case `scenario_blocks` usually unchanged |
+| **components_v1** (clean, code-backed platform) | Component upgrade | ~2k tokens/component | mechanical `eval_sequence`→`sequence` translation via `primitive_registry`; fresh snapshot per component; targeted citation gathering; test_case `scenario_blocks` usually unchanged |
 | **components_v1** (`likely_demotes_to_path_a: true`) | Agentic re-author | ~10k tokens/test | classifier emitted `path_b_blockers[]` — Bubble eval workarounds, branch pseudo-step, race/iteration history. Mechanical translation will lose the workarounds; route directly to Path A and skip the demotion thrash |
+| **components_v1** (closed-loop platform: Bubble/Retool/Webflow/n8n/etc.) | Agentic re-author | ~10k tokens/test | **Blanket Path A.** Closed-loop platforms require fresh runner drives for every component to capture platform_artifacts (editor_url + screenshot + element_id). Mechanical translation cannot produce these — it has no browser session. Route ALL components_v1 tests on closed-loop platforms to Path A regardless of path_b_blockers. This is a scope carve-out, not a plan redesign: §13.2's two-branch split remains valid for code-backed platforms (React, Next.js, Angular, etc.) where file:line citations and snapshot excerpts can be gathered without a live drive. |
 | **components_v2** | Skip | 0 | already migrated; defensive case |
 | **mixed** | Agentic re-author | ~10k tokens/test | LLM has to disentangle; treat as agentic |
 | **empty** | Skip | 0 | flag the test as broken |
