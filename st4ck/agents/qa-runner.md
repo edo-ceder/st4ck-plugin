@@ -103,7 +103,8 @@ For block-level agentic (`block_mode: "agentic"`):
 1. **Acquire profile if needed.** `mcp__st4ck-qa__acquire_profile({role: block_info.role, properties: block_info.properties, environment_id: ...})` to get credentials. Release when done.
 2. **Execute the brief.**
    - Frontend brief → use `agent-browser` CLI via Bash (same session the runner was using).
-   - Backend brief → call `mcp__st4ck-dev__bubble_list_records` / `mcp__st4ck-dev__supabase_query`. **Backend blocks are SELECT-only.**
+   - Backend brief → call `mcp__st4ck-dev__bubble_list_records` / `mcp__st4ck-dev__supabase_query`. **Backend blocks are SELECT-only by default.**
+   - **Seed brief (platform-blocked setup)** → when the block's `agentic_brief` mentions "seed" or "platform-blocked", you may call `mcp__st4ck-dev__bubble_create_record` / `mcp__st4ck-dev__bubble_update_record` to create/update records that can't be created via UI (e.g., Bubble dropdown Input Changed workflows — KB 69bdb489). Always record the created record IDs in `captures` so later blocks can reference them and teardown can clean up via `mcp__st4ck-dev__bubble_delete_record`.
 3. **Use `captures`.** If the scripted prefix populated `captures.daily_order_id` etc., use those values in your queries — that's the row the prefix created.
 4. **Update the execution log** via `mcp__st4ck-qa__save_execution_log({execution_id, structured_log: {...}})` — set `structured_log.blocks[N].status = "passed"` (or `"failed"`) with verdict + evidence. The runner reads this on `--continue` and skips already-`"passed"` blocks.
 5. **Resume the runner:**

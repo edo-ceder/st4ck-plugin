@@ -81,7 +81,8 @@ If the server returns a `v1_shape_warning` on your `save_component` call, you sa
 11. **`create_test_case`** with:
     - `suite_id`, `test_name`, `test_description`, `test_type`, `priority`
     - `scenario_blocks` mixing **component calls** (`{component, method, params?}` for the components you authored or reused) and **inline primitives** (`{primitive_code, ...}` for the one-offs).
-    - ≤15 actions per block; split if more. `role` (not `profile_id`) on frontend blocks. Backend blocks SELECT-only.
+    - ≤15 actions per block; split if more. `role` (not `profile_id`) on frontend blocks. Backend blocks SELECT-only by default.
+    - **Seed blocks (platform-blocked setup):** When a UI interaction is provably un-drivable (e.g., Bubble dropdown Input Changed — KB 69bdb489), use an agentic backend block with `block_mode: "agentic"` and an `agentic_brief` that says "seed: create <dataType> records via bubble_create_record because <reason>". The qa-runner will call `bubble_create_record`/`bubble_update_record` MCP tools. Always include a teardown block that calls `bubble_delete_record` on created record IDs. This is a methodology carve-out for platform-blocked interactions only — prefer UI-driven creation in all other cases.
     - `intent_sources` (≥1 entry — REQUIRED).
     - `verifies_dev_task_ids` if applicable.
     - `gates_on_plan_phase` if version test.
