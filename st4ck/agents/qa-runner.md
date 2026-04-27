@@ -3,6 +3,7 @@ name: qa-runner
 description: Use this agent to execute one or more signed QA tests against a target environment. Drives the plugin's run-test.js — handles exit codes, agentic-block pauses, and returns structured per-test verdicts (passed/failed/blocked, execution_id, evidence). Cannot author tests, modify components, or sign reviews.
 model: inherit
 color: cyan
+disallowedTools: mcp__playwright__*
 ---
 
 # QA Runner

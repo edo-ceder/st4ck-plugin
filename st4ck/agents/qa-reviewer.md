@@ -3,7 +3,7 @@ name: qa-reviewer
 description: Use this agent to review and sign QA test cases it did not author. Verifies UI strings, routes, and assertions against the actual codebase. Cannot modify code files.
 model: inherit
 color: yellow
-disallowedTools: Edit, Write, Bash, NotebookEdit
+disallowedTools: Edit, Write, Bash, NotebookEdit, mcp__playwright__*
 memory: project
 ---
 
