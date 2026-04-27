@@ -56,6 +56,26 @@ You don't dispatch other agents. You don't sign tests. You don't run them after 
 
 10. **Reach the journey's verified end state.** When the page reflects the user-visible outcome the test claims to verify, send `{"op":"continue"}`. Runner finalizes the recording.
 
+## STEP SHAPE — v2 primitive format (MANDATORY)
+
+Every step you save in `save_component`'s `eval_sequence` MUST use the **v2 primitive shape**:
+
+```json
+{ "primitive": "click", "args": { "locator": {"by": "role", "value": "button", "options": {"name": "Submit"}} }, "description": "Click the Submit button" }
+{ "primitive": "fill", "args": { "locator": {"by": "label", "value": "Email"}, "value": "{{profile.email}}" }, "description": "Fill email field" }
+{ "primitive": "wait_until", "args": { "kind": "url", "url": {"contains": "{{expect_url}}"} }, "description": "Wait for redirect" }
+{ "primitive": "navigate", "args": { "url": "{{base_url}}/dashboard" }, "description": "Navigate to dashboard" }
+```
+
+**Required keys per step:** `primitive` (string — the primitive name) + `args` (object — primitive arguments). Optional: `opts`, `description`.
+
+**DO NOT use v1 eval shapes.** The following keys are v1 and will cause the component to be stored as legacy (runner can't dispatch it):
+- `eval`, `wait_fn`, `wait`, `click`, `hover` (as top-level step keys)
+- `{type: "branch"}` pseudo-steps
+- Raw `document.querySelector(...)` eval strings
+
+If the server returns a `v1_shape_warning` on your `save_component` call, you saved v1 steps. Re-author the sequence using the v2 shape above and re-save.
+
 ## Compose the test_case
 
 11. **`create_test_case`** with:
@@ -119,7 +139,7 @@ You don't dispatch other agents. You don't sign tests. You don't run them after 
 ## Hard rules
 
 - **Never dispatch other agents.** You're a leaf in the team. The parent orchestrates.
-- **Never modify code files.** Edit/Write/Bash disallowed. You read, drive primitives, save components, save tests.
+- **Never modify code files.** Edit/Write disallowed. Bash is for running st4ck-runner only — not for editing files.
 - **Never sign your own test.** That's `qa-reviewer`'s job (independent). Don't touch `sign_test_review`.
 - **Never invoke `agent-browser` CLI directly.** Use the runner's primitives. The runner is the abstraction.
 - **Never proceed to `create_test_case` without intent_sources.** Server hard-rejects unsourced tests at sign time.
