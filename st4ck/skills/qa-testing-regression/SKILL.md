@@ -61,7 +61,7 @@ From the user's request, classify the scope:
 
 Regression authoring requires grounded understanding of what's shipped. You do this; the sub-agent starts at "deep dive into code."
 
-1. **Navigate the running app** — use `agent-browser` or Playwright MCP. Capture ACTUAL sidebar labels, button text, form fields, route structure. For no-code platforms (Bubble, etc.) this is the ONLY way to learn the UI.
+1. **Navigate the running app** — use `/st4ck:browse` or Playwright MCP to capture ACTUAL sidebar labels, button text, form fields, route structure. For no-code platforms (Bubble, etc.) this is the ONLY way to learn the UI.
 2. **Scan the codebase** — main routing file, sidebar/nav component, module boundaries (routes/components/data model/endpoints), user roles + permissions.
 3. **Check existing coverage** — `get_test_suites(category: "regression")` to avoid duplication.
 4. **Search the KB** — `search_test_knowledge(platform: "<platform>")` surfaces platform quirks (Bubble timing, React portal selectors, etc.). Pass results forward so the author doesn't re-discover solved problems. KB search is also one leg of the per-component triad (see methodology).
@@ -140,7 +140,7 @@ If review finds issues: re-dispatch the same `qa-author` (Team mode) or a fresh 
 
 ### Step 9 — Dispatch qa-runner (smoke + execution)
 
-Once tests are signed, dispatch `qa-runner` with the test_case_ids + base_url + environment. The runner drives the plugin's `run-test.js`, handles agentic-block pauses inline, and returns per-test verdicts. Failures get auto-routed to `dev_tasks` per §5.5; the runner reports back, you summarize for the human.
+Once tests are signed, dispatch `qa-runner` with the test_case_ids + base_url + environment. The runner drives `@st4ck/runner` (`npx st4ck-runner run`), handles agentic-block IPC pauses inline, and returns per-test verdicts. Failures get auto-routed to `dev_tasks` per §5.5; the runner reports back, you summarize for the human.
 
 ### Step 10 — Coverage report + HUMAN GATE
 

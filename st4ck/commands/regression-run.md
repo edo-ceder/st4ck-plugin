@@ -53,66 +53,56 @@ For each resolved suite:
 
 ## Execute
 
-For each test in the suite, run the **deterministic runner** (zero LLM cost):
+For each test in the suite, run the **deterministic runner** (zero LLM cost outside any agentic blocks):
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
-  <test_case_id> <base_url> --session "st4ck-reg-$(date +%s)"
+npx st4ck-runner run <test_case_id> <base_url> \
+  --environment <env_id> [--branch <name>] [--git-sha <sha>]
 ```
 
 The runner reads `ST4CK_TOKEN` from the environment. Claude Code automatically sets it from the `headers.Authorization` value in `.mcp.json`. Do not pass it inline.
 
-### Execution flow per test:
-1. Run `run-test.js` — handles deterministic blocks + profile locking internally
-2. Handle exit codes:
-   - **0**: Test passed — record result, continue to next test
-   - **1**: Test failed — search `search_test_knowledge` with the error pattern before diagnosing from scratch. Record failure with evidence, continue to next test
-   - **42**: Agentic pause — see "Handling Agentic Pauses" below. Handle the block yourself, update structured_log, resume with `--continue --from-block <next>`, repeat until 0 or 1
+### Execution flow per test
 
-### Handling Agentic Pauses (exit 42)
+1. Run the runner — handles deterministic blocks + profile acquisition + agentic-block IPC pauses inline.
+2. Handle final exit codes:
+   - **0**: Test passed — record result, continue to next test.
+   - **1**: Test failed — search `search_test_knowledge` with the error pattern before diagnosing from scratch. Record failure with evidence, continue to next test.
+
+There is no exit-on-pause; the runner stays alive for IPC pauses (see below).
+
+### Handling agentic blocks (IPC pause)
 
 **Agentic blocks are a LAST RESORT.** They should only exist when the block requires runtime decision-making (branching on unpredictable state, visual judgment, or dynamic query construction). "Complex UI" is never a valid reason — date pickers, edit dialogs, and Radix dropdowns are all scriptable as components. If you encounter an agentic block that looks scriptable, flag it in the report.
 
-On exit 42, the runner writes a JSON pause envelope to **stdout** (not stderr — stderr holds progress logs). Parse that JSON first — everything you need is in it:
+When the runner reaches an agentic block, it stays alive and emits an `agentic_pause` envelope to **stdout**, then waits for line-delimited JSON commands on **stdin**. You handle the brief inline; on `{"op":"continue"}` the runner resumes at the next block in the same browser context.
+
+To drive the pause from a Claude Code Bash tool, spawn the runner with a stdin FIFO so you can send commands incrementally between observations — see [/st4ck:browse](st4ck-browse.md) for the canonical FIFO pattern (`mkfifo` + `run_in_background:true` + `BashOutput` + `echo … >&9`).
+
+Pause envelope shape:
 
 ```json
 {
-  "status": "agentic_pause",
-  "block": 3,
-  "action": 0,
-  "execution_id": "exec-...",
+  "type": "agentic_pause",
   "test_case_id": "test-...",
-  "block_mode": "agentic",             // "agentic" = whole block | "scripted" = single action paused
-  "agentic_brief": "Verify today's daily order...",  // primary instruction for block-level pauses
-  "block_info": {
-    "block_type": "backend",
-    "role": "Customer",
-    "properties": { "cross_company": true },
-    "entry_url": null,
-    "expected_outcome": "Order exists with submitted status and 1+ line items"
-  },
-  "captures": { "daily_order_id": "1712345678x999", ... },  // values captured by earlier scripted blocks
-  "next_step": "Execute the brief..., then resume with: node ... --continue ... --from-block 4"
+  "execution_id": "exec-...",
+  "block_index": 3,
+  "brief": "Verify today's daily order...",
+  "expected_outcome": "Order exists with submitted status and 1+ line items",
+  "page_url": "https://...",
+  "profile": { "id": "...", "email": "...", "role": "Customer" }
 }
 ```
 
-**Two pause shapes you will see:**
+**Execution steps:**
 
-1. **Block-level agentic (`block_mode: "agentic"`)** — the block is fully agentic. Use `agentic_brief` + `block_info.expected_outcome` as your brief. The block has no scripted actions to mimic. This should be rare — only for blocks that genuinely require runtime decision-making (e.g., dynamic backend queries where the query shape depends on runtime data).
-
-2. **Action-level agentic (`block_mode: "scripted"`, legacy fallback)** — a single action inside an otherwise scripted block is marked `type: "agentic"`. This is the old fallback from the pre-block_mode era. Use `get_test_details(test_case_id)` to pull the block's full action list, find the paused action by index, and fulfill it.
-
-**Execution steps for block-level agentic blocks:**
-
-1. **Acquire profile if needed**: if `block_info.role` is set, call `acquire_profile(role: block_info.role, properties: block_info.properties, environment_id: <env>)` to get credentials. Remember to release it when done.
-2. **Execute the brief** using your own tools:
-   - Frontend work: `agent-browser` CLI via `Bash` (same session the runner was using — `st4ck-reg-<timestamp>`)
-   - Backend work: `mcp_call` on the V1 data endpoint via the `mcp__st4ck__bubble_list_records` / `mcp__st4ck__supabase_query` tools
-3. **Reference captures**: if `captures.daily_order_id` exists, use it in your queries — that's the order the scripted block created before the pause.
-4. **Decide pass/fail**: write a short verdict + evidence (row count, field values, screenshot path).
-5. **Update the execution log**: call `save_execution_log({execution_id, test_case_id, status: "running", structured_log: {...}})` where `structured_log.blocks[N]` for the paused block has `status: "passed"` (or `"failed"`), your verdict, and any evidence. The runner reads this log on `--continue` and skips any block already marked `"passed"`.
-6. **Resume the runner**: `node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js <test_id> <base_url> --continue <execution_id> --from-block <N+1>`. The runner reads `ST4CK_TOKEN` from env.
-7. **If your verdict was "failed"**: don't resume. Record the failure for the report and move to the next test.
+1. Parse the pause envelope — `brief` is your primary instruction, `expected_outcome` is the verdict criterion. The runner has already acquired any profile required by the block's `role`; you do not call `acquire_profile` again.
+2. Execute the brief by sending primitives over stdin:
+   - **Frontend brief** — drive the same browser context via the IPC primitives (`{"op":"click"}`, `{"op":"fill"}`, `{"op":"snapshot"}`, etc. — full vocabulary in [/st4ck:browse](st4ck-browse.md)). The page state at the pause moment is already loaded.
+   - **Backend brief** — call `mcp__st4ck-dev__bubble_list_records` / `mcp__st4ck-dev__supabase_query` to verify data via the project's DB. Backend blocks are SELECT-only by default.
+3. **Decide pass/fail.** Write a short verdict + evidence (row count, field values, screenshot path).
+4. **Resume the runner.** Send `{"op":"continue"}` — the runner records the agentic block as passed (using your trace) and proceeds to the next block in the same browser context. No process restart, no `--continue` flag.
+5. **If you cannot satisfy the brief.** Send `{"op":"abort","reason":"<short>"}` — the runner records the block as failed and exits 1. Don't resume on aborted blocks.
 
 ### Suite-level rules:
 - Run tests within a suite **sequentially** (one browser session at a time)
@@ -132,8 +122,8 @@ These rules exist so a broken environment, a stale selector, or a single slow mo
 
 4. **Per-test retry policy**:
    - Exit 0: record pass, continue.
-   - Exit 1: **do not retry**. Record failure with evidence (include `log.console_errors` from the saved execution log — the runner now captures browser console on every failure), continue.
-   - Exit 42: handle the pause, resume with `--continue`. Never retry a pause — either the agentic step passed or it didn't.
+   - Exit 1: **do not retry**. Record failure with evidence (include `log.console_errors` from the saved execution log — the runner captures browser console on every failure), continue.
+   - Agentic pause (in-process): handle the brief inline via stdin and resume with `{"op":"continue"}`. Never retry a pause — either the agentic step passed or it didn't.
    - Bash timeout (600s) OR runner crash before any block started: retry **once**, then skip to next test with `verdict: "infrastructure_error"`. Never retry more than once.
 
 5. **Hard wall-clock cap**: 90 minutes per batch. When hit, stop wherever you are, write the partial report, and return. The human can resume the remaining tests separately.

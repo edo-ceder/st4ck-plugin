@@ -1,37 +1,28 @@
 ---
-description: Execute a deterministic test case using the st4ck runner. Handles agentic block handoff and rerun from failure. Supports both the legacy run-test.js (exit-42 protocol) and the new @st4ck/runner (IPC pause + storageState rehydrate).
-argument-hint: <test_case_id> [--env <environment_name>] [--new-runner]
+description: Execute a deterministic test case using the st4ck runner. Handles agentic block handoff via IPC pause and rerun from failure.
+argument-hint: <test_case_id> [--env <environment_name>]
 ---
 
 # /st4ck-run
 
-You are an orchestrator for deterministic test execution. You select the appropriate runner, handle the pause protocol, and manage agentic block handoff.
+You are an orchestrator for deterministic test execution. You invoke the runner, handle agentic-block IPC pauses inline, and report results.
 
-## Runner selection
+## Runner shape
 
-Two runners are wired in during the Phase 4–6 transition:
-
-| Runner | Path | Pause protocol | When to use |
-|---|---|---|---|
-| **`@st4ck/runner`** (new) | `packages/st4ck-runner/dist/cli.js` (or `npx st4ck`) | IPC pause + `--browser-mode=rehydrate` | Tests where `test_cases.use_new_runner=true`; all newly authored tests; recordings produced by `npx st4ck author` |
-| **`run-test.js`** (legacy) | `${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js` | exit-42 + `--continue --from-block <N>` | Tests where `use_new_runner=false`; the 340-test legacy regression suite during Phase 6 migration |
-
-Plugin shim (plan §1.11) routes between them based on `use_new_runner`. If the user passes `--new-runner`, force the new runner regardless. Otherwise read the test row and dispatch.
-
-## New-runner CLI shape (`@st4ck/runner`)
+The runner is `@st4ck/runner` — Playwright-backed, IPC-pause for agentic handoff, deterministic replay for everything else. Invoke via `npx`:
 
 ```bash
-npx st4ck run <test_file_or_test_case_id> \
-  --base-url <url> \
-  --mode=execution        # default; set to "authoring" only for /st4ck-author flows
-  --browser-mode=fresh    # default; "rehydrate" loads storageState from .st4ck/sessions/<id>.json
-  --env <environment_name>
-  --session "st4ck-$(date +%s)"
+npx st4ck-runner run <test_case_id> <base_url> \
+  [--environment <env_name>] [--branch <name>] [--git-sha <sha>] \
+  [--mode=qa] [--headless]
 ```
 
-Pause protocol: when the runner needs the agent to handle an agentic block, it writes a JSON pause envelope to a named pipe (IPC) and **stays alive**. The agent reads the envelope, performs the work, writes the result back to the same pipe, and the runner resumes in the same browser context. No process death, no `--continue`, no storageState reload — the page state is preserved.
+- `--mode=qa` (default) — runs signed tests; persists a `test_executions` row.
+- Use `--mode=authoring` only for `/st4ck-author` flows where the test is unsigned and the run is ephemeral.
+- `--continue <execution_id> --from-block <N>` — resume a prior run after handling an agentic block (see below).
+- The runner reads `ST4CK_TOKEN` from env (Claude Code sets it from `.mcp.json` automatically). Don't pass it inline.
 
-Recordings (from `npx st4ck author`) live as markdown files at `.st4ck/recordings/<slug>.md`. Pass the path directly to `npx st4ck run` to replay them — no DB roundtrip required.
+Recordings produced by `/st4ck-author` live at `.st4ck/recordings/<slug>.md` — pass the file path directly to `npx st4ck-runner run --test-file <path>` to replay them, no DB roundtrip.
 
 ## Resolution
 
@@ -43,98 +34,73 @@ From `$ARGUMENTS`:
 | Test name | Search via `get_test_cases`, find matching test, use its ID |
 | Nothing | Ask user which test to run |
 
-## Pre-Flight
+## Pre-flight
 
-1. Call `get_test_details(test_case_id)` to load the test
-2. Verify the test has `scenario_blocks` (not empty)
+1. Call `get_test_details(test_case_id)` to load the test.
+2. Verify the test has `scenario_blocks` (not empty).
 3. Check review signatures:
-   - Component-format tests: need `journey_signature` + all referenced components must have `review_signature`
-   - Legacy-format tests: need `review_signature`
+   - Component-format tests need `journey_signature` plus `review_signature` on every referenced component.
+   - Legacy-format tests need `review_signature`.
 4. Resolve the environment:
-   - If `--env` provided, look up `test_environments` by name
-   - Otherwise use the first active environment for the project
+   - If `--env` provided, look up `test_environments` by name.
+   - Otherwise use the first active environment for the project.
 
-## Execution — legacy runner (`run-test.js`)
-
-**Note**: The script handles profile acquisition/release internally — do NOT acquire profiles yourself.
-
-Run the deterministic runner:
+## Execute
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
-  <test_case_id> <base_url> --session "st4ck-$(date +%s)"
+npx st4ck-runner run <test_case_id> <base_url> \
+  --environment <env_id> [--branch <name>] [--git-sha <sha>]
 ```
 
-### Handle Exit Codes
+The runner stays alive across the whole test. Final exit codes are simple — no `42` because agentic pauses don't kill the process:
 
 | Code | Meaning | Action |
-|------|---------|--------|
-| **0** | All blocks passed | Report success |
-| **1** | Failure | Read the log, report failure with evidence |
-| **42** | Agentic pause | Read stdout JSON, handle the agentic block (see below), then continue |
+|---|---|---|
+| **0** | All blocks passed | Capture `execution_id` from the runner's final stdout envelope. |
+| **1** | Failure | Read `mcp__st4ck-qa__get_execution_log(execution_id)` for `console_capture` + `network_failures` + the first failed action's error class. Report failure with evidence. |
 
-**Note**: Profile acquisition and release is handled internally by the script. Do NOT manage profiles yourself.
+## Agentic block handoff (IPC pause)
 
-## Execution — new runner (`@st4ck/runner`)
+When the runner reaches an agentic block, it stays alive and emits an `agentic_pause` envelope to **stdout**, then waits for line-delimited JSON commands on **stdin**. You handle the work inline by sending primitives back over stdin until you send `{"op":"continue"}`; the runner then resumes the next block in the same browser context — no `--continue` needed, no `--from-block`, no storageState reload, page state preserved.
 
-Run the test through the new runner. The runner stays alive across pauses (IPC), so there are no exit codes for pauses — only a final 0 (pass) or 1 (fail).
+**Agentic blocks are a LAST RESORT.** They should only exist when the block requires runtime decision-making (branching on unpredictable state, visual judgment, or dynamic query construction). Date pickers, edit dialogs, and Radix dropdowns are scriptable as components — challenge any agentic block before executing it.
 
-```bash
-npx st4ck run <test_case_id_or_recording_path> \
-  --base-url <url> --env <env_name> --session "st4ck-$(date +%s)"
-```
+The pause envelope shape:
 
-For agentic blocks, the runner emits a pause envelope on the IPC channel and waits for your reply. There is no `--from-block N` because the same browser context is held; you reply to the pause with the block result and the runner resumes in place.
-
-If the test was recorded under `npx st4ck author` and lives in `.st4ck/recordings/<slug>.md`, pass the file path instead of a UUID — no `get_test_details` call needed.
-
-### Agentic Block Handoff (exit 42)
-
-**Agentic blocks are a LAST RESORT.** They should only exist when the block requires runtime decision-making (branching on unpredictable state, visual judgment, or dynamic query construction). If a test has agentic blocks for "complex UI" like date pickers, edit dialogs, or Radix dropdowns — those should be scripted as components instead. Challenge any agentic block before executing it.
-
-When the script exits with code 42, stdout contains a comprehensive JSON pause envelope with everything you need:
 ```json
 {
-  "status": "agentic_pause",
-  "block": 3, "action": 0,
-  "execution_id": "...", "test_case_id": "...",
-  "block_mode": "agentic",
-  "agentic_brief": "Verify today's daily order...",
-  "block_info": {
-    "block_type": "backend", "role": "Customer",
-    "properties": { "cross_company": true },
-    "entry_url": null, "expected_outcome": "..."
-  },
-  "captures": { "daily_order_id": "..." },
-  "next_step": "Execute the brief..., then resume with: node ... --continue ... --from-block 4"
+  "type": "agentic_pause",
+  "test_case_id": "...",
+  "execution_id": "...",
+  "block_index": 3,
+  "brief": "Verify today's daily order...",
+  "expected_outcome": "Order exists with submitted status and 1+ line items",
+  "page_url": "https://...",
+  "profile": { "id": "...", "email": "...", "role": "Customer" }
 }
 ```
 
-1. Parse the pause envelope — `agentic_brief` is your primary instruction, `captures` has values from earlier scripted blocks
-2. Handle the agentic block yourself:
-   - **Backend blocks**: Use `bubble_list_records` / `supabase_query` MCP tools to verify data
-   - **Frontend blocks**: Use `agent-browser` CLI via Bash (same session the runner was using)
-   - If `block_info.role` is set and you need credentials, call `acquire_profile(role, properties, environment_id)`
-3. Save your block result via `save_execution_log(execution_id, structured_log_update)`
-4. Restart the runner to continue:
+To drive the pause from a Claude Code Bash tool, spawn the runner with a stdin FIFO so you can send commands incrementally between observations — see [/st4ck:browse](st4ck-browse.md) for the canonical FIFO pattern (`mkfifo` + `run_in_background:true` + `BashOutput` + `echo … >&9`).
 
-```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
-  <test_case_id> <base_url> \
-  --continue <execution_id> --from-block <next_block>
-```
+Your job during the pause:
 
-5. Repeat until exit 0 or exit 1
+1. Parse the pause envelope — `brief` is your primary instruction, `expected_outcome` is the verdict criterion.
+2. Execute the brief by sending primitives over stdin:
+   - **Frontend brief** — drive the same browser context with `{"op":"click"}`, `{"op":"fill"}`, `{"op":"snapshot"}`, etc. The page state at the pause moment is already loaded.
+   - **Backend brief** — call `mcp__st4ck-dev__bubble_list_records` / `mcp__st4ck-dev__supabase_query` to verify data via the project's DB. Backend blocks are SELECT-only by default.
+3. When the brief is satisfied, send `{"op":"continue"}` — the runner records the agentic block as passed and resumes.
+4. If you cannot satisfy the brief, send `{"op":"abort","reason":"<short>"}` — the runner records the block as failed and exits.
 
-### Rerun from Failure
+## Rerun from failure
 
 If a test failed at block N and the user wants to retry after a fix:
 
 ```bash
-node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
-  <test_case_id> <base_url> \
+npx st4ck-runner run <test_case_id> <base_url> \
   --continue <execution_id> --from-block <N>
 ```
+
+The runner loads the prior `test_executions` row's `structured_log`, skips already-passed blocks, and resumes at block N. Profile re-acquisition is automatic via `preferred_profile_id` from the prior log.
 
 ## Report
 
@@ -142,7 +108,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
 ## Test Run: [test_name]
 
 **Status**: PASSED / FAILED / ERROR
-**Runner**: deterministic (zero LLM cost)
+**Runner**: deterministic (zero LLM cost outside any agentic blocks)
 **Duration**: [X]s
 **Blocks**: [passed]/[total]
 
@@ -151,7 +117,7 @@ node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
 |---|------|-------------|--------|----------|
 | 0 | frontend | Login | passed | 2.1s |
 | 1 | frontend | Navigate | passed | 0.8s |
-| 2 | backend | Seed data | agentic (handled) | 1.2s |
+| 2 | backend | Seed data | agentic (handled inline) | 1.2s |
 | 3 | frontend | Verify | FAILED | 3.5s |
 
 ### Failure Details (if any)

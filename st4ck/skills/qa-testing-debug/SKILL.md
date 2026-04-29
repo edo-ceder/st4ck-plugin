@@ -61,7 +61,7 @@ get_test_details(test_case_id)         # current test body
 
 From the log, identify:
 - Which block / action failed
-- The agent-browser error or assertion failure text
+- The runner's `error.class` + `error.detail` for the failed primitive (or assertion failure text)
 - DOM snapshot at failure time (if captured)
 - Whether any earlier block had seed failures (silent failures cascade)
 
@@ -82,11 +82,12 @@ If classification is unclear → fetch `get_qa_methodology(section: "decisions")
 
 ### Step 4 — Reproduce the failure locally
 
-Before fixing, reproduce with agent-browser:
+Before fixing, reproduce via `/st4ck:browse` (or `npx st4ck-runner record …` directly):
 
 1. Get the fixture page / session URL from the log.
-2. Run the exact eval step that failed.
-3. Inspect the DOM snapshot — confirm your diagnosis.
+2. Open a runner session against that URL with `/st4ck:browse`.
+3. Drive the IPC primitives that match the failing eval step; observe what the live page returns.
+4. Inspect the snapshot — confirm your diagnosis.
 
 **Never fix a failure you haven't reproduced.** A fix for the wrong root cause will pass this run and fail the next.
 

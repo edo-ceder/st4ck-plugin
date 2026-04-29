@@ -4,7 +4,7 @@ Shared dispatch prompt templates used by `qa-testing-regression`, `qa-testing-ve
 
 - **`qa-author`** — primary authoring teammate. Drives one test journey end-to-end with primitives, captures the trace, decomposes into save_component(s) + create_test_case at the end.
 - **`qa-reviewer`** — independent reviewer (always dispatched separately from author; server-enforced independence).
-- **`qa-runner`** — executes signed tests via the plugin's `run-test.js`; handles agentic-block pauses inline; returns per-test verdicts.
+- **`qa-runner`** — executes signed tests via `@st4ck/runner` (`npx st4ck-runner run`); handles agentic-block IPC pauses inline; returns per-test verdicts.
 
 **No `authoring-lead` sub-agent.** The lead is a role the parent session enacts — not something you dispatch via the `Agent` tool. CC sub-agents are leaves and cannot recursively dispatch teammates. (Corrected 2026-04-26.)
 
@@ -141,11 +141,11 @@ When dispatching the `qa-runner` sub-agent (after sign), use this template. The 
 
 ### INSTRUCTIONS (verbatim — do not paraphrase)
 
-You drive the plugin's `run-test.js` for each test_case_id. Pre-flight: confirm each test is signed (`journey_signature` or `review_signature` non-null) — refuse unsigned tests with `stuck_kind: "unsigned_test"`. Invoke via Bash:
+You drive `@st4ck/runner` for each test_case_id. Pre-flight: confirm each test is signed (`journey_signature` or `review_signature` non-null) — refuse unsigned tests with `stuck_kind: "unsigned_test"`. Invoke via Bash:
 
-  node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js <test_case_id> <base_url> --session "qa-runner-$(date +%s)" [--branch <name>] [--git-sha <sha>] [--environment <env_id>]
+  npx st4ck-runner run <test_case_id> <base_url> [--branch <name>] [--git-sha <sha>] [--environment <env_id>]
 
-Exit code policy: 0=pass, 1=fail (read execution log for diagnostics, ≤90 sec triage, move on), 42=agentic pause (handle the brief inline per `qa-runner.md` rules, save_execution_log, resume with --continue --from-block N+1).
+Exit code policy: 0=pass, 1=fail (read execution log for diagnostics, ≤90 sec triage, move on). Agentic pauses do NOT exit the runner — handle them inline by sending JSON commands over stdin per `qa-runner.md` rules, then send `{"op":"continue"}` to resume in the same browser context.
 
 Safety limits: incremental write per test, ≤90 sec triage budget, 3-consecutive-same-signature bail, no retry on exit 1, retry-once-then-skip on infra error, 90-min wall-clock cap.
 

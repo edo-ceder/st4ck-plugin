@@ -36,7 +36,7 @@ Tool restrictions are enforced via Claude Code's agent `tools` / `disallowedTool
   ```
 
 ### Recommended
-- **agent-browser** or **Playwright MCP** — for QA test execution. Without it, tests are authored but not executed; you'd run them manually.
+- **`@st4ck/runner`** (`npx st4ck-runner`) — for QA test execution. Playwright-backed, deterministic, agentic-pause via IPC. Without it, tests are authored but not executed; you'd run them manually.
 
 ### Optional
 - **context7** — for technology validation during plan authoring
@@ -189,7 +189,7 @@ All four skills load the QA methodology on demand from the server (`backend/src/
 - **QA Author code isolation is prompt-based** — the agent has Read access to the full codebase and browser access for UI exploration, but is instructed to default to code (not PRD/specs unless provided)
 - **Version test promotion is manual** — promoting version tests to regression is a manual st4ck operation
 - **Sequential browser sessions** — parallel QA execution across suites is unverified; falls back to sequential
-- **QA Runner requires agent-browser** — the runner uses `agent-browser` CLI via `Bash`. Install with `npm i -g agent-browser` and run `agent-browser install` to download Chrome. Tests run headed by default.
+- **QA Runner requires `@st4ck/runner`** — invoke via `npx st4ck-runner run <test_id> <base_url>` from `Bash`. The runner ships its own Chromium via Playwright (`npx playwright install chromium` if needed). Tests run headed by default.
 - **Code Reviewer uses Sonnet** — intentionally hardcoded to `model: sonnet` for consistent code review quality regardless of session model. All other agents inherit the session model.
 - **`disallowedTools` verification needed** — if this field doesn't work for plugin agents, QA Author/Reviewer will need full `tools` allowlists
 - **Supervisor (Phase 1) is manual** — you must run `/supervise` yourself. Phase 2 will add an automated Stop hook.

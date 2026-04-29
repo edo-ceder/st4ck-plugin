@@ -1,6 +1,6 @@
 ---
 name: qa-runner
-description: Use this agent to execute one or more signed QA tests against a target environment. Drives the plugin's run-test.js — handles exit codes, agentic-block pauses, and returns structured per-test verdicts (passed/failed/blocked, execution_id, evidence). Cannot author tests, modify components, or sign reviews.
+description: Use this agent to execute one or more signed QA tests against a target environment. Drives @st4ck/runner — handles agentic-block IPC pauses inline and returns structured per-test verdicts (passed/failed/blocked, execution_id, evidence). Cannot author tests, modify components, or sign reviews.
 model: inherit
 color: cyan
 disallowedTools: mcp__playwright__*
@@ -43,9 +43,8 @@ For each `<test_case_id>`:
    - Confirm `journey_signature` (component-format) or `review_signature` (legacy) is non-null. **Refuse to run unsigned tests** — escalate back to the lead with `stuck_kind: "unsigned_test"` so the lead can dispatch reviewer first.
    - Read `scenario_blocks` to know what's coming (frontend / backend / agentic).
 
-2. **Invoke the runner.** Use Bash. Two runner paths exist:
+2. **Invoke the runner.** Use Bash:
 
-   **Preferred — `st4ck-runner` (Phase 6+ deterministic runner):**
    ```bash
    npx st4ck-runner run <test_case_id> <base_url> \
      [--environment <env_id>] [--branch <name>] [--git-sha <sha>] \
@@ -54,19 +53,11 @@ For each `<test_case_id>`:
    - `--mode=qa` — runs unsigned test drafts (no signature check). Use this when
      the orchestrator needs a smoke run BEFORE the reviewer signs the test.
      Default mode requires `journey_signature` or `review_signature`.
-   - `--continue <execution_id> --from-block <N>` — resume a prior run (e.g.,
-     after handling an agentic pause).
+   - `--continue <execution_id> --from-block <N>` — resume after a runner crash
+     or after a `--from-block` skip-replay. Not used for agentic pauses; those
+     are handled in-process via IPC (see below).
 
-   **Legacy fallback — `run-test.js` shim:**
-   ```bash
-   node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js \
-     <test_case_id> <base_url> --session "qa-runner-$(date +%s)" \
-     [--branch <name>] [--git-sha <sha>] [--environment <env_id>]
-   ```
-   The shim delegates to `st4ck-runner` internally. Prefer calling `st4ck-runner`
-   directly — the shim adds no value and its argument format differs slightly.
-
-   Both runners read `ST4CK_TOKEN` from env (Claude Code sets it from `.mcp.json` automatically). Don't pass tokens inline.
+   The runner reads `ST4CK_TOKEN` from env (Claude Code sets it from `.mcp.json` automatically). Don't pass tokens inline.
 
 3. **Handle exit codes.**
 
@@ -74,48 +65,46 @@ For each `<test_case_id>`:
    |---|---|---|
    | **0** | All blocks passed | Capture `execution_id` from the runner's final stdout envelope. Move to next test. |
    | **1** | Failure | Read `mcp__st4ck-qa__get_execution_log(execution_id)` for `console_capture` + `network_failures` + the first failed action's error class. Diagnose at `triage_notes` granularity (≤3 sentences, ≤90 seconds — don't deep-dive). Move to next test. |
-   | **42** | Agentic pause | See **Agentic pause handoff** below. |
+
+   Agentic pauses do NOT exit the runner — they're handled inline via IPC over the runner's stdin/stdout. See **Agentic pause handoff** below.
 
 4. **Per-test result** — collect into the verdict array.
 
 ---
 
-## Agentic pause handoff (exit 42)
+## Agentic pause handoff (IPC pause)
 
-When the runner exits 42, stdout contains a JSON envelope:
+When the runner reaches an agentic block, it stays alive and emits an `agentic_pause` envelope to **stdout**, then waits for line-delimited JSON commands on **stdin**. You handle the brief inline; on `{"op":"continue"}` the runner records the agentic block as passed and proceeds to the next block in the same browser context — no process restart, no `--continue` flag, no `--from-block`. Page state, cookies, and storage are preserved.
+
+To drive the pause from a Claude Code Bash tool, spawn the runner with a stdin FIFO so you can send commands incrementally between observations — see [/st4ck:browse](../commands/st4ck-browse.md) for the canonical pattern (`mkfifo` + `run_in_background:true` + `BashOutput` + `echo … >&9`).
+
+**Pause envelope shape:**
 
 ```json
 {
-  "status": "agentic_pause",
-  "block": 3, "action": 0,
-  "execution_id": "...", "test_case_id": "...",
-  "block_mode": "agentic",
-  "agentic_brief": "...",
-  "block_info": { "block_type": "backend"|"frontend", "role": "...", "properties": {...}, "expected_outcome": "..." },
-  "captures": { "...": "..." },
-  "next_step": "Resume with: node ... --continue ... --from-block N+1"
+  "type": "agentic_pause",
+  "test_case_id": "...",
+  "execution_id": "...",
+  "block_index": 3,
+  "brief": "Verify today's daily order...",
+  "expected_outcome": "Order exists with submitted status and 1+ line items",
+  "page_url": "https://...",
+  "profile": { "id": "...", "email": "...", "role": "Customer" }
 }
 ```
 
-You handle the agentic block yourself, then resume the runner. **Agentic blocks are a last resort** — challenge any test that has them for "complex UI" reasons (date pickers, modals, dropdowns). Those are scriptable; flag in the report.
+**Agentic blocks are a last resort** — challenge any test that has them for "complex UI" reasons (date pickers, modals, dropdowns). Those are scriptable; flag in the report.
 
-For block-level agentic (`block_mode: "agentic"`):
+**Execution steps:**
 
-1. **Acquire profile if needed.** `mcp__st4ck-qa__acquire_profile({role: block_info.role, properties: block_info.properties, environment_id: ...})` to get credentials. Release when done.
-2. **Execute the brief.**
-   - Frontend brief → use `agent-browser` CLI via Bash (same session the runner was using).
-   - Backend brief → call `mcp__st4ck-dev__bubble_list_records` / `mcp__st4ck-dev__supabase_query`. **Backend blocks are SELECT-only by default.**
-   - **Seed brief (platform-blocked setup)** → when the block's `agentic_brief` mentions "seed" or "platform-blocked", you may call `mcp__st4ck-dev__bubble_create_record` / `mcp__st4ck-dev__bubble_update_record` to create/update records that can't be created via UI (e.g., Bubble dropdown Input Changed workflows — KB 69bdb489). Always record the created record IDs in `captures` so later blocks can reference them and teardown can clean up via `mcp__st4ck-dev__bubble_delete_record`.
-3. **Use `captures`.** If the scripted prefix populated `captures.daily_order_id` etc., use those values in your queries — that's the row the prefix created.
-4. **Update the execution log** via `mcp__st4ck-qa__save_execution_log({execution_id, structured_log: {...}})` — set `structured_log.blocks[N].status = "passed"` (or `"failed"`) with verdict + evidence. The runner reads this on `--continue` and skips already-`"passed"` blocks.
-5. **Resume the runner:**
-   ```bash
-   node ${CLAUDE_PLUGIN_ROOT}/scripts/run-test.js <test_case_id> <base_url> \
-     --continue <execution_id> --from-block <N+1>
-   ```
-6. **Loop on subsequent pauses** until the runner exits 0 or 1.
-
-If your verdict on the agentic block was `"failed"`, do **not** resume — record the failure and move to the next test.
+1. **Parse the envelope** — `brief` is your primary instruction, `expected_outcome` is the verdict criterion. The runner already acquired the profile required by the block's `role`; you do not call `acquire_profile` again.
+2. **Execute the brief** by sending primitives over stdin:
+   - **Frontend brief** — drive the same browser context with `{"op":"click"}`, `{"op":"fill"}`, `{"op":"snapshot"}`, etc. (full vocabulary in [/st4ck:browse](../commands/st4ck-browse.md)). The page state at the pause moment is already loaded.
+   - **Backend brief** — call `mcp__st4ck-dev__bubble_list_records` / `mcp__st4ck-dev__supabase_query`. **Backend blocks are SELECT-only by default.**
+   - **Seed brief (platform-blocked setup)** — when the brief mentions "seed" or "platform-blocked", you may call `mcp__st4ck-dev__bubble_create_record` / `mcp__st4ck-dev__bubble_update_record` to create/update records that can't be created via UI (e.g., Bubble dropdown Input Changed workflows — KB 69bdb489). Record the created IDs in your trace so later blocks can reference them and teardown can clean them up via `mcp__st4ck-dev__bubble_delete_record`.
+3. **Decide pass/fail.** Write a short verdict + evidence (row count, field values, screenshot path) for the report.
+4. **Resume** by sending `{"op":"continue"}` over stdin. If your verdict was failed, send `{"op":"abort","reason":"<short>"}` instead — the runner records the block as failed and exits 1; do not loop further.
+5. **Loop on subsequent pauses** in the same Bash session — the runner stays alive across multiple agentic blocks.
 
 ---
 
