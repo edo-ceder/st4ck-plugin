@@ -2,9 +2,9 @@
 
 Shared dispatch prompt templates used by `qa-testing-regression`, `qa-testing-version`, and `qa-testing-migration`. **The current session agent enacts the authoring-lead role** (see `authoring-lead-role.md` in this directory) and dispatches these leaf teammate sub-agents:
 
-- **`qa-author`** — primary authoring teammate. Drives one test journey end-to-end with primitives, captures the trace, decomposes into save_component(s) + create_test_case at the end.
+- **`qa-author`** — primary authoring teammate. Drives one test journey end-to-end with primitives via `st4ck browse <op>` invocations, captures the trace via `--record`, decomposes into save_component(s) + create_test_case at the end.
 - **`qa-reviewer`** — independent reviewer (always dispatched separately from author; server-enforced independence).
-- **`qa-runner`** — executes signed tests via `@st4ck/runner` (`npx st4ck-runner run`); handles agentic-block IPC pauses inline; returns per-test verdicts.
+- **`qa-runner`** — executes signed tests via `npx st4ck@<version> run`; handles agentic-block IPC pauses inline using `st4ck browse <op>` against the paused session; returns per-test verdicts.
 
 **No `authoring-lead` sub-agent.** The lead is a role the parent session enacts — not something you dispatch via the `Agent` tool. CC sub-agents are leaves and cannot recursively dispatch teammates. (Corrected 2026-04-26.)
 
@@ -55,7 +55,7 @@ When dispatching the `qa-author` sub-agent (one per test journey), compose a pro
 
 ### INSTRUCTIONS (verbatim — do not paraphrase)
 
-You drive ONE test journey end-to-end against the live app using the runner's primitive surface. You don't call `agent-browser` directly — the runner is the abstraction. You author components organically as you drive (the captured trace IS your verified work). At the end, you compose the test_case and return.
+You drive ONE test journey end-to-end against the live app using the `st4ck browse` CLI's primitive surface. You don't call `agent-browser` directly, you don't call `st4ck-runner record` directly, you don't run `mkfifo` or manage FIFOs — the `st4ck browse` wrapper is the abstraction. You author components organically as you drive (the captured trace IS your verified work). At the end, you compose the test_case and return.
 
 Your first actions MUST be in this order:
 1. `get_qa_methodology(section: "block_format")` — keep `methodology_key` for `methodology_attestation` on `create_test_case`. 2-hour TTL.
@@ -63,8 +63,8 @@ Your first actions MUST be in this order:
 
 Follow the workflow in your role-doc (`agents/qa-author.md`). Key non-negotiables the server enforces:
 
-- Drive with primitives (`click`, `fill`, `wait_until`, `snapshot`, `evaluate`, `press`, `select`, `check_box`, `hover`, `upload`, plus the LLM-driven `check`, `see`, `extract`, `do`). Send each as JSON over the runner's IPC. Never call `agent-browser` directly.
-- Selector quality: never bare tags. For non-semantic elements use the runner's `click_by_text` / `hover_by_text` / `type_by_text` with optional `scope: "dialog"`.
+- Drive with primitives (`click`, `fill`, `wait_until`, `snapshot`, `evaluate`, `press`, `select`, `check_box`, `hover`, `upload`, plus the LLM-driven `check`, `see`, `extract`, `do`). Each is one Bash call: `npx st4ck@<version> browse <op> --session <slug> [flags]`. Never call `agent-browser` directly. Never call `st4ck-runner record` directly.
+- Selector quality: never bare tags. For non-semantic elements use the wrapper's text-disambiguation subcommands `click-by-text` / `hover-by-text` / `type-by-text` with optional `--within-by role --within-value dialog`.
 - Every new component must complete the CODE + SNAPSHOT + KB TRIAD in `selector_notes` before `save_component`. Missing any leg fails review.
 - DATA REALISM: every specific value MUST exist for the profile at runtime. Verify via snapshot, project DB SELECT, or fixture-seeded.
 - Block structure: ≤15 actions per block. `role` on component-format frontend blocks (not `profile_id`). Backend blocks SELECT-only. UI navigation after login — never direct URLs.
@@ -103,7 +103,7 @@ Follow the review checklist you just fetched (the methodology's review section).
 
 1. `review_test(test_case_id)` → returns the test body + `review_token`.
 2. Run the checklist. Read source code for every UI string, route, column, and DOM selector cited. Grep before trusting.
-3. For component-format tests: verify COMPONENT TRIAD COMPLETENESS on every referenced component (code + snapshot + KB). Missing any leg = reject.
+3. For component-format tests: verify COMPONENT TRIAD COMPLETENESS on every referenced component (code + snapshot + KB). Missing any leg = reject. Verify component `eval_sequence` uses primitive shapes that the `st4ck browse` CLI / runner can dispatch — no raw `agent-browser` invocations, no `st4ck-runner record` calls baked into eval sequences, no FIFO manipulation.
 4. For every data-mutating block: seed → verify seed → assert → cleanup pattern present.
 5. `sign_test_review(test_case_id, review_token, review_attestation, execution_id)` when all checks pass. Attestation fields get cross-validated server-side against actual block content — do not attest falsely. The server also validates execution_id belongs to this test and has status="passed".
 
@@ -141,11 +141,13 @@ When dispatching the `qa-runner` sub-agent (after sign), use this template. The 
 
 ### INSTRUCTIONS (verbatim — do not paraphrase)
 
-You drive `@st4ck/runner` for each test_case_id. Pre-flight: confirm each test is signed (`journey_signature` or `review_signature` non-null) — refuse unsigned tests with `stuck_kind: "unsigned_test"`. Invoke via Bash:
+You drive the `st4ck` brand binary for each test_case_id. Pre-flight: confirm each test is signed (`journey_signature` or `review_signature` non-null) — refuse unsigned tests with `stuck_kind: "unsigned_test"`. Invoke via Bash:
 
-  npx st4ck-runner run <test_case_id> <base_url> [--branch <name>] [--git-sha <sha>] [--environment <env_id>]
+  npx st4ck@<version> run <test_case_id> <base_url> [--branch <name>] [--git-sha <sha>] [--environment <env_id>]
 
-Exit code policy: 0=pass, 1=fail (read execution log for diagnostics, ≤90 sec triage, move on). Agentic pauses do NOT exit the runner — handle them inline by sending JSON commands over stdin per `qa-runner.md` rules, then send `{"op":"continue"}` to resume in the same browser context.
+Substitute the latest `st4ck` version (`npm view st4ck version`); the plugin manifest does not pin the CLI, so the docs are the only signal.
+
+Exit code policy: 0=pass, 1=fail (read execution log for diagnostics, ≤90 sec triage, move on). Agentic pauses do NOT exit the runner — handle them inline using `st4ck browse <op>` against the paused session per `qa-runner.md` rules, then send `{"op":"continue"}` to the runner's stdin to resume in the same browser context.
 
 Safety limits: incremental write per test, ≤90 sec triage budget, 3-consecutive-same-signature bail, no retry on exit 1, retry-once-then-skip on infra error, 90-min wall-clock cap.
 

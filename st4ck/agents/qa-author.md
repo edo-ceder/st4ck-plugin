@@ -37,26 +37,37 @@ You don't dispatch other agents. You don't sign tests. You don't run them after 
 
 6. **Acquire profile if not pre-supplied.** `acquire_profile({role, properties, environment_id})` — release on every exit path including failure. If the parent gave you a `profile_id`, skip this.
 
-7. **Spin up the Session.** `st4ck-runner record <url> --instruction "<journey description>"` (or `session.do(...)` if you have an existing Session). If the parent gave you a storage state path, pass `--browser-mode=rehydrate <path>` and skip login. The runner emits `agentic_pause` on stdout; you drive it via line-delimited JSON over stdin.
+7. **Spin up the Session via the `st4ck browse` CLI.** Launch in record mode against the journey's URL:
 
-   **Guardrail.** If you find yourself reaching for `mcp__playwright__*` tools, STOP — those are not available in this session; spawn `st4ck-runner record …` per this step and drive it via JSON-over-stdin. The runner is the abstraction; primitives are your vocabulary; the component cache only populates from runner-issued primitives, so any Playwright MCP detour leaves the cache empty and the cost curve never flips.
+   ```bash
+   npx st4ck@<version> browse launch <url> \
+     --session <slug> \
+     --record --out .st4ck/recordings/<slug>.md \
+     --instruction "<journey description>"
+   ```
 
-8. **Drive with primitives.** Issue commands one at a time:
+   Substitute the latest `st4ck` version (`npm view st4ck version`); the plugin manifest does not pin the CLI version, so the docs are the only signal. If the parent gave you a storage state path, append `-- --browser-mode=rehydrate <path>` (everything after `--` is forwarded verbatim to the runner). The wrapper returns the `runner_ready` envelope and detaches; from now on every primitive is one Bash call.
+
+   **Guardrail.** If you find yourself reaching for `mcp__playwright__*` tools, OR `st4ck-runner record` directly, OR `mkfifo` + raw `echo > FIFO` recipes, STOP — those are not available / not the right surface in this session. The wrapper (`st4ck browse`) is the canonical surface; primitives are your vocabulary; the component cache only populates from runner-issued primitives, so any detour around the wrapper leaves the cache empty and the cost curve never flips.
+
+8. **Drive with primitives — one Bash call per command.** Issue them one at a time:
+
+   ```bash
+   npx st4ck@<version> browse snapshot --session <slug>
+   npx st4ck@<version> browse click --session <slug> --by role --value button --name "Sign In"
+   npx st4ck@<version> browse fill --session <slug> --by label --value "Email" --text "alice@example.com"
+   npx st4ck@<version> browse wait_until --session <slug> --js "document.querySelector('[data-testid=dashboard]') !== null" --timeout-ms 10000
    ```
-   {"op":"snapshot"}                                      → a11y excerpt
-   {"op":"click", "locator":{"by":"role","value":"button","options":{"name":"Sign In"}}}
-   {"op":"fill",  "locator":{...}, "value":"alice@example.com"}
-   {"op":"wait_until","args":{"kind":"visible","locator":{...}}}
-   ```
-   Each primitive is verified against the live page before the next. **You do NOT call `agent-browser` directly** — the runner is the abstraction.
+
+   Each primitive is verified against the live page before the next; the response envelope (status, evidence) lands on stdout. **You do NOT call `agent-browser` directly, you do NOT call `st4ck-runner record` directly, you do NOT manage a FIFO** — the `st4ck browse` CLI is the abstraction. Full subcommand surface in [/st4ck:browse](../commands/st4ck-browse.md).
 
 9. **Decompose during the drive.** As you capture primitives, recognize:
-   - **A captured sub-sequence matches a candidate from the orchestrator's list** → author it as a component (TRIAD: file:line + snapshot excerpt + KB result). Use it in subsequent calls. The runner cache (via `session.do`'s asComponent param, or directly via `save_component`) persists the captured sequence.
+   - **A captured sub-sequence matches a candidate from the orchestrator's list** → author it as a component (TRIAD: file:line + snapshot excerpt + KB result). Use it in subsequent calls. The runner persists the captured sequence under `--record`; you `save_component` against the captured sub-sequence.
    - **A captured sub-sequence matches §7.1 rule 1 (closed interaction with verifiable post-state) or rule 4 (modal/Radix/portal)** — author it as a component even without orchestrator pre-evaluation. These rules are local; you can self-check.
    - **One-off bits** — leave as inline primitives in the eventual `scenario_blocks`.
    - **An existing component matches** — reuse it; record which sub-sequence becomes that component call in the test.
 
-10. **Reach the journey's verified end state.** When the page reflects the user-visible outcome the test claims to verify, send `{"op":"continue"}`. Runner finalizes the recording.
+10. **Reach the journey's verified end state.** When the page reflects the user-visible outcome the test claims to verify, finalize the recording with `npx st4ck@<version> browse close --session <slug>`. The wrapper sends `{"op":"continue"}` to the runner and waits for the `record_complete` envelope; the md trace is written to the path you set via `--out`.
 
 ## STEP SHAPE — v2 primitive format (MANDATORY)
 
@@ -142,9 +153,9 @@ If the server returns a `v1_shape_warning` on your `save_component` call, you sa
 ## Hard rules
 
 - **Never dispatch other agents.** You're a leaf in the team. The parent orchestrates.
-- **Never modify code files.** Edit/Write disallowed. Bash is for running st4ck-runner only — not for editing files.
+- **Never modify code files.** Edit/Write disallowed. Bash is for `st4ck` CLI invocations only — not for editing files.
 - **Never sign your own test.** That's `qa-reviewer`'s job (independent). Don't touch `sign_test_review`.
-- **Never invoke `agent-browser` CLI directly.** Use the runner's primitives. The runner is the abstraction.
+- **Never invoke `agent-browser` directly. Never invoke `st4ck-runner record` directly. Never run `mkfifo` + raw `echo > FIFO` recipes.** The `st4ck browse` CLI is the abstraction; the wrapper handles every layer below it.
 - **Never proceed to `create_test_case` without intent_sources.** Server hard-rejects unsourced tests at sign time.
 - **Always release the profile** before returning, including in error paths.
 

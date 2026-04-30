@@ -53,12 +53,14 @@ For each resolved suite:
 
 ## Execute
 
-For each test in the suite, run the **deterministic runner** (zero LLM cost outside any agentic blocks):
+For each test in the suite, run the **deterministic runner** via the `st4ck` brand binary (zero LLM cost outside any agentic blocks):
 
 ```bash
-npx st4ck-runner run <test_case_id> <base_url> \
+npx st4ck@<version> run <test_case_id> <base_url> \
   --environment <env_id> [--branch <name>] [--git-sha <sha>]
 ```
+
+Substitute the latest `st4ck` version (`npm view st4ck version`); the plugin manifest does not pin the CLI, so the docs are the only signal.
 
 The runner reads `ST4CK_TOKEN` from the environment. Claude Code automatically sets it from the `headers.Authorization` value in `.mcp.json`. Do not pass it inline.
 
@@ -75,9 +77,9 @@ There is no exit-on-pause; the runner stays alive for IPC pauses (see below).
 
 **Agentic blocks are a LAST RESORT.** They should only exist when the block requires runtime decision-making (branching on unpredictable state, visual judgment, or dynamic query construction). "Complex UI" is never a valid reason — date pickers, edit dialogs, and Radix dropdowns are all scriptable as components. If you encounter an agentic block that looks scriptable, flag it in the report.
 
-When the runner reaches an agentic block, it stays alive and emits an `agentic_pause` envelope to **stdout**, then waits for line-delimited JSON commands on **stdin**. You handle the brief inline; on `{"op":"continue"}` the runner resumes at the next block in the same browser context.
+When the runner reaches an agentic block, it stays alive and emits an `agentic_pause` envelope on **stdout** (with a `session_name` field naming the active runner session), then waits for the next IPC command on its stdin. You handle the brief inline using `st4ck browse <op>` invocations against the same `session_name`; when satisfied, send `{"op":"continue"}` to the runner's stdin and the runner resumes at the next block in the same browser context.
 
-To drive the pause from a Claude Code Bash tool, spawn the runner with a stdin FIFO so you can send commands incrementally between observations — see [/st4ck:browse](st4ck-browse.md) for the canonical FIFO pattern (`mkfifo` + `run_in_background:true` + `BashOutput` + `echo … >&9`).
+For the work itself, drive via the `st4ck browse` CLI — see [/st4ck:browse](st4ck-browse.md) for the full subcommand vocabulary. The CLI handles all IPC plumbing; you make one Bash call per primitive, no `mkfifo`, no FIFO write-ends to manage.
 
 Pause envelope shape:
 
@@ -87,6 +89,7 @@ Pause envelope shape:
   "test_case_id": "test-...",
   "execution_id": "exec-...",
   "block_index": 3,
+  "session_name": "<runner-session-name>",
   "brief": "Verify today's daily order...",
   "expected_outcome": "Order exists with submitted status and 1+ line items",
   "page_url": "https://...",
@@ -96,13 +99,13 @@ Pause envelope shape:
 
 **Execution steps:**
 
-1. Parse the pause envelope — `brief` is your primary instruction, `expected_outcome` is the verdict criterion. The runner has already acquired any profile required by the block's `role`; you do not call `acquire_profile` again.
-2. Execute the brief by sending primitives over stdin:
-   - **Frontend brief** — drive the same browser context via the IPC primitives (`{"op":"click"}`, `{"op":"fill"}`, `{"op":"snapshot"}`, etc. — full vocabulary in [/st4ck:browse](st4ck-browse.md)). The page state at the pause moment is already loaded.
+1. Parse the pause envelope — `brief` is your primary instruction, `expected_outcome` is the verdict criterion. `session_name` names the live runner session; pass it as `--session <name>` (or `-s <name>`) to every `st4ck browse` invocation below. The runner has already acquired any profile required by the block's `role`; you do not call `acquire_profile` again.
+2. Execute the brief:
+   - **Frontend brief** — drive the same browser context via `st4ck browse <op>` invocations: `npx st4ck@<version> browse snapshot --session <name>`, `npx st4ck@<version> browse click --session <name> --by role --value button --name "Save"`, etc. Full vocabulary in [/st4ck:browse](st4ck-browse.md). The page state at the pause moment is already loaded.
    - **Backend brief** — call `mcp__st4ck-dev__bubble_list_records` / `mcp__st4ck-dev__supabase_query` to verify data via the project's DB. Backend blocks are SELECT-only by default.
 3. **Decide pass/fail.** Write a short verdict + evidence (row count, field values, screenshot path).
-4. **Resume the runner.** Send `{"op":"continue"}` — the runner records the agentic block as passed (using your trace) and proceeds to the next block in the same browser context. No process restart, no `--continue` flag.
-5. **If you cannot satisfy the brief.** Send `{"op":"abort","reason":"<short>"}` — the runner records the block as failed and exits 1. Don't resume on aborted blocks.
+4. **Resume the runner.** Send `{"op":"continue"}` to the paused runner's stdin — the runner records the agentic block as passed (using your trace) and proceeds to the next block in the same browser context. No process restart, no `--continue` flag.
+5. **If you cannot satisfy the brief.** Send `{"op":"abort","reason":"<short>"}` to the runner's stdin — the runner records the block as failed and exits 1. Don't resume on aborted blocks.
 
 ### Suite-level rules:
 - Run tests within a suite **sequentially** (one browser session at a time)
