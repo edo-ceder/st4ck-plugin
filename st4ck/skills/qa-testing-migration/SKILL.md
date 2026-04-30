@@ -57,7 +57,7 @@ Before dispatching ANY per-test migration, check whether the project has at leas
 2. **Dispatch one `qa-author` teammate** with a *bootstrap brief*:
    - "Author ONE component for `<flow_name>`. This is the project's reference idiom — every subsequent migration agent will be pointed at it. Be conservative on selectors, exhaustive on TRIAD evidence, and stop after one component is saved."
    - For closed-loop platforms (Bubble/Retool/Webflow/n8n/etc.), instruct the author to set `platform_native: true` + populate `platform_artifacts` ({platform, editor_url, element_id, screenshot_path}) on `save_component` instead of attempting file:line citations.
-   - Pass the canonical primitive list (run `st4ck-runner --list-primitives` or fetch via `get_qa_methodology(section: "component_authoring")`).
+   - Pass the canonical primitive list (fetch via `get_qa_methodology(section: "component_authoring")`).
 3. **Dispatch a fresh `qa-reviewer`** with a bootstrap-review brief: "Sign or fail this single component. It will be the project's canonical reference; reviewer rigor must hold."
 4. **On approval** — capture the component UUID. Inject into every subsequent dispatch brief:
    - Append: "**Reference idiom for this project:** `<component_name>.<method>` (UUID `<id>`). Match its conventions for locator shape, TRIAD shape, parameter naming, and platform_native handling. Deviate only with stated rationale."
@@ -95,7 +95,7 @@ This branch is mostly mechanical. You don't always need to dispatch `qa-author` 
    - Emit `{primitive_code: "p.X", ...rest_of_step}`. Preserve locator shape (by/value/scope).
    - If a step has no primitive-code equivalent: **escalate this component to Branch A** (full re-author). Record reason. Continue with the rest of the test's components.
 3. **Server-side ref-rejection check** — scan emitted `sequence` for any `ref: "eN"` fields. If any → **escalate this component to Branch A** (v1 component persisted a snapshot ref; needs re-snapshot via fresh drive).
-4. **Capture fresh `snapshot_excerpt`** — spin up `st4ck-runner record` against the component's target URL (recovered from `recording_metadata` if present; else from test's first block), take a snapshot. If component can't be reached in isolation → **escalate to Branch A**.
+4. **Capture fresh `snapshot_excerpt`** — `npx st4ck@<version> browse launch <component_target_url> --session migrate-<slug>` (URL recovered from `recording_metadata` if present; else from test's first block) followed by `npx st4ck@<version> browse snapshot --session migrate-<slug>` and `npx st4ck@<version> browse close --session migrate-<slug>`. If component can't be reached in isolation → **escalate to Branch A**.
 5. **Gather `source_citations`** — for each `selector_notes.legacy_text` mention of a file path, read the cited file at current `git_sha` and produce a structured `{path, line, git_sha, note}` entry. If legacy_text doesn't cite paths (most v1 components don't), dispatch a small `qa-author` teammate with a "citation-gathering brief" (read source + KB search; no driving). ~1-2 LLM calls per component.
 6. **Search `automation_lessons`** — `search_test_knowledge({query: <component-name> + <app-framework>})`. Attach hit IDs to `kb_entries`. If no hits, set sentinel `["searched, nothing matched"]`.
 7. **Save as v+1** — `save_component` with `sequence`, full TRIAD, `recording_metadata.recorded_via='v1_upgrade'`, mark old v as `deprecated_versions`.

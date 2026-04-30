@@ -59,7 +59,7 @@ Returns:
 {
   "affected_tests": [{"test_id", "test_name", "citations": [...]}],
   "affected_components": [{"component_id"}],
-  "suggested_runs": ["st4ck-runner run <test_id> <base_url>"]
+  "suggested_runs": ["npx st4ck@<version> run <test_id> <base_url>"]
 }
 ```
 
@@ -118,8 +118,8 @@ Impact analysis (branch: <branch>, range: <before_sha>..<after_sha>):
   - <M> affected tests
   - <K> dev_tasks queued (assigned_team='qa')
   - Suggested runs:
-    st4ck-runner run <test_id_1> <base_url>
-    st4ck-runner run <test_id_2> <base_url>
+    npx st4ck@<version> run <test_id_1> <base_url>
+    npx st4ck@<version> run <test_id_2> <base_url>
     ...
 ```
 

@@ -1,6 +1,6 @@
 ---
 name: qa-runner
-description: Use this agent to execute one or more signed QA tests against a target environment. Drives @st4ck/runner — handles agentic-block IPC pauses inline and returns structured per-test verdicts (passed/failed/blocked, execution_id, evidence). Cannot author tests, modify components, or sign reviews.
+description: Use this agent to execute one or more signed QA tests against a target environment. Drives the `st4ck` CLI (`npx st4ck@<version> run`) — handles agentic-block IPC pauses inline and returns structured per-test verdicts (passed/failed/blocked, execution_id, evidence). Cannot author tests, modify components, or sign reviews.
 model: inherit
 color: cyan
 disallowedTools: mcp__playwright__*

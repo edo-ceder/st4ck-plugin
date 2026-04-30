@@ -140,7 +140,7 @@ If review finds issues: re-dispatch the same `qa-author` (Team mode) or a fresh 
 
 ### Step 9 — Dispatch qa-runner (smoke + execution)
 
-Once tests are signed, dispatch `qa-runner` with the test_case_ids + base_url + environment. The runner drives `@st4ck/runner` (`npx st4ck-runner run`), handles agentic-block IPC pauses inline, and returns per-test verdicts. Failures get auto-routed to `dev_tasks` per §5.5; the runner reports back, you summarize for the human.
+Once tests are signed, dispatch `qa-runner` with the test_case_ids + base_url + environment. The runner drives the `st4ck` brand CLI (`npx st4ck@<version> run`), handles agentic-block IPC pauses inline (`{"op":"continue"}` over the runner's stdin; brief steps drive via `st4ck browse <op>` against the paused `session_name`), and returns per-test verdicts. Failures get auto-routed to `dev_tasks` per §5.5; the runner reports back, you summarize for the human.
 
 ### Step 10 — Coverage report + HUMAN GATE
 
