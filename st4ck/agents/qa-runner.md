@@ -48,12 +48,10 @@ For each `<test_case_id>`:
    ```bash
    npx st4ck@<version> run <test_case_id> <base_url> \
      [--environment <env_id>] [--branch <name>] [--git-sha <sha>] \
-     [--headless] [--mode=qa]
+     [--headless]
    ```
    Substitute the latest published `st4ck` version (`npm view st4ck version`); the plugin manifest does not pin the CLI, so the docs are the only signal.
-   - `--mode=qa` — runs unsigned test drafts (no signature check). Use this when
-     the orchestrator needs a smoke run BEFORE the reviewer signs the test.
-     Default mode requires `journey_signature` or `review_signature`.
+   - The runner defaults to `--mode=qa` — runs SIGNED tests and persists a `test_executions` row. This is what qa-runner always uses; never pass `--mode=authoring` here (that mode is reserved for `/st4ck-author` ephemeral runs and bypasses signature checks, which qa-runner refuses to do — see Pre-flight above).
    - `--continue <execution_id> --from-block <N>` — resume after a runner crash
      or after a `--from-block` skip-replay. Not used for agentic pauses; those
      are handled in-process via IPC (see below).
