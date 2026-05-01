@@ -1,6 +1,6 @@
 ---
 description: Drive a real browser one IPC primitive at a time via the `st4ck browse` CLI. Each subcommand is one Bash invocation; the wrapper hides the runner + FIFO behind the scenes. Multi-session out of the box. Optional `--record` saves the trace as a deterministic md test you can replay with `st4ck run`.
-argument-hint: <url> [--session <name>] [--record [--out <path>]] [--instruction "<text>"] [--platform=<v>] [--headless] [--no-blank-page-check] [--blank-page-delay <ms>]
+argument-hint: <url> [--session <name>] [--record [--out <path>]] [--instruction "<text>"] [--platform=<v>] [--device "<name>"] [--viewport <WxH>] [--locale <bcp47>] [--timezone <iana>] [--color-scheme <v>] [--geolocation <lat,lon>] [--headless] [--no-blank-page-check]
 ---
 
 # /st4ck:browse
@@ -46,6 +46,38 @@ Returns the `runner_ready` envelope:
 | `--headless` | Run Chromium headless. Default headed. |
 | `--blank-page-delay <ms>` | How long to wait before checking for a blank-rendered page (default 4000). |
 | `--no-blank-page-check` | Skip the blank-page heuristic entirely. |
+
+### Browser-context emulation flags
+
+These mirror Playwright's [`BrowserContextOptions`](https://playwright.dev/docs/api/class-browser#browser-new-context) — agents familiar with Playwright Test config find the flag they expect. Each is forwarded to the runner and resolved against `playwright.devices[name]` / native context options. Wrapper-side validation fails fast on bad strings BEFORE Chromium spawns (typos error in <100ms).
+
+| Flag | What it does |
+|---|---|
+| `--device "iPhone 14 Pro"` | Apply a Playwright device descriptor. Sets viewport + UA + DPR + isMobile + hasTouch as a bundle. The right way to test mobile — viewport-only emulation does NOT trigger `@media (pointer: coarse)` / touch event paths / mobile UA gating that real responsive sites use. See `npx playwright devices` for the full list. |
+| `--viewport "393x852"` | Standalone viewport, OR overrides the viewport from `--device` when both are set. |
+| `--user-agent "..."` | Custom User-Agent string. Standalone or overrides `--device`'s UA. |
+| `--locale "he-IL"` | BCP 47 locale tag. Drives `Intl.*`, `Accept-Language` header, `navigator.language`. |
+| `--timezone "Asia/Jerusalem"` | IANA timezone ID. Drives `new Date()` and `Intl` timezone resolution. |
+| `--color-scheme dark` | `prefers-color-scheme` media query. One of `light` / `dark` / `no-preference`. |
+| `--geolocation "32.0853,34.7818"` | Seed `navigator.geolocation.getCurrentPosition`. **The `geolocation` permission is auto-granted** so apps that read coords on mount don't sit in the prompt-pending state. |
+| `--permissions clipboard-read,notifications` | Comma-separated permission names granted via `context.grantPermissions()` after creation. Merges with the auto-granted geolocation permission when both are set. |
+| `--http-credentials "user:pass"` | HTTP Basic auth for staging environments behind a credential gate. |
+| `--offline` | Start the context offline — useful for testing offline-handling code paths. |
+| `--bypass-csp` | Bypass the page's Content-Security-Policy header. Lets you `evaluate` arbitrary JS on sites with strict CSP. |
+
+**Composite example — mobile + Hebrew + Tel Aviv timezone + dark mode + geolocation:**
+
+```bash
+npx st4ck@latest browse launch https://app.example.com \
+  --session plenty-mobile \
+  --device "iPhone 14 Pro" \
+  --locale "he-IL" \
+  --timezone "Asia/Jerusalem" \
+  --color-scheme dark \
+  --geolocation "32.0853,34.7818"
+```
+
+Each flag is orthogonal to the others — pick the dimensions your test cares about. `--device` covers the most ground for mobile testing; the rest layer on locale-aware behavior, theming, and location-aware features.
 
 If you need to pass extra runner flags the wrapper doesn't know about, use the `--` separator:
 
