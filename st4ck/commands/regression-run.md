@@ -60,7 +60,9 @@ npx st4ck@latest run <test_case_id> <base_url> \
   --environment <env_id> [--branch <name>] [--git-sha <sha>]
 ```
 
-`@latest` resolves to the current release at invocation time. Pin to an explicit version (e.g. `npx st4ck@0.2.0-alpha.1`) only when reproducibility matters.
+`@latest` resolves to the current release at invocation time. Pin to an explicit version (e.g. `npx st4ck@0.2.0-alpha.3`) only when reproducibility matters.
+
+For mobile / locale / timezone-aware regression suites, append browser-context emulation flags (`--device "iPhone 14 Pro"`, `--locale "he-IL"`, `--timezone-id "Asia/Jerusalem"`, `--geolocation "lat,lon"`, etc.) — same surface as `/st4ck:browse`. Full table at [/st4ck:browse](st4ck-browse.md#browser-context-emulation-flags). The escape hatch (`--context-options '<json>'`) reaches Playwright fields not exposed as flags (`recordVideo`, `recordHar`, etc.).
 
 The runner reads `ST4CK_TOKEN` from the environment. Claude Code automatically sets it from the `headers.Authorization` value in `.mcp.json`. Do not pass it inline.
 

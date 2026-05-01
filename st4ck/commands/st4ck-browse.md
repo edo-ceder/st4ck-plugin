@@ -1,6 +1,6 @@
 ---
 description: Drive a real browser one IPC primitive at a time via the `st4ck browse` CLI. Each subcommand is one Bash invocation; the wrapper hides the runner + FIFO behind the scenes. Multi-session out of the box. Optional `--record` saves the trace as a deterministic md test you can replay with `st4ck run`.
-argument-hint: <url> [--session <name>] [--record [--out <path>]] [--instruction "<text>"] [--platform=<v>] [--device "<name>"] [--viewport <WxH>] [--locale <bcp47>] [--timezone <iana>] [--color-scheme <v>] [--geolocation <lat,lon>] [--headless] [--no-blank-page-check]
+argument-hint: <url> [--session <name>] [--record [--out <path>]] [--instruction "<text>"] [--platform=<v>] [--device "<name>"] [--viewport <WxH>] [--locale <bcp47>] [--timezone-id <iana>] [--color-scheme <v>] [--reduced-motion <v>] [--geolocation <lat,lon>] [--context-options <json>] [--headless] [--no-blank-page-check]
 ---
 
 # /st4ck:browse
@@ -57,13 +57,16 @@ These mirror Playwright's [`BrowserContextOptions`](https://playwright.dev/docs/
 | `--viewport "393x852"` | Standalone viewport, OR overrides the viewport from `--device` when both are set. |
 | `--user-agent "..."` | Custom User-Agent string. Standalone or overrides `--device`'s UA. |
 | `--locale "he-IL"` | BCP 47 locale tag. Drives `Intl.*`, `Accept-Language` header, `navigator.language`. |
-| `--timezone "Asia/Jerusalem"` | IANA timezone ID. Drives `new Date()` and `Intl` timezone resolution. |
+| `--timezone-id "Asia/Jerusalem"` | IANA timezone ID. Drives `new Date()` and `Intl` timezone resolution. Maps to Playwright's `timezoneId` field. (`--timezone` is also accepted as an alias for backward compat with alpha.5.) |
 | `--color-scheme dark` | `prefers-color-scheme` media query. One of `light` / `dark` / `no-preference`. |
+| `--reduced-motion reduce` | `prefers-reduced-motion` media query. One of `reduce` / `no-preference`. Tests animation-disabled / accessibility paths. |
+| `--forced-colors active` | `forced-colors` media query. One of `active` / `none`. Tests Windows High Contrast / forced-color paths. |
 | `--geolocation "32.0853,34.7818"` | Seed `navigator.geolocation.getCurrentPosition`. **The `geolocation` permission is auto-granted** so apps that read coords on mount don't sit in the prompt-pending state. |
 | `--permissions clipboard-read,notifications` | Comma-separated permission names granted via `context.grantPermissions()` after creation. Merges with the auto-granted geolocation permission when both are set. |
 | `--http-credentials "user:pass"` | HTTP Basic auth for staging environments behind a credential gate. |
 | `--offline` | Start the context offline — useful for testing offline-handling code paths. |
 | `--bypass-csp` | Bypass the page's Content-Security-Policy header. Lets you `evaluate` arbitrary JS on sites with strict CSP. |
+| `--context-options '<json>'` | **Escape hatch** — raw JSON `BrowserContextOptions` blob. Reaches Playwright fields not exposed as first-class flags: `recordVideo`, `recordHar`, `extraHTTPHeaders`, `screen`, future Playwright additions. Validated as JSON wrapper-side BEFORE Chromium spawns. **Merge precedence:** `--context-options` is the BASE layer; `--device` descriptor overrides on top; explicit named flags (`--viewport`, `--locale`, etc.) override last — so `--device "iPhone 14 Pro" --context-options '{"reducedMotion":"reduce"}'` gives you iPhone emulation PLUS reducedMotion without conflict. |
 
 **Composite example — mobile + Hebrew + Tel Aviv timezone + dark mode + geolocation:**
 
@@ -72,12 +75,21 @@ npx st4ck@latest browse launch https://app.example.com \
   --session plenty-mobile \
   --device "iPhone 14 Pro" \
   --locale "he-IL" \
-  --timezone "Asia/Jerusalem" \
+  --timezone-id "Asia/Jerusalem" \
   --color-scheme dark \
   --geolocation "32.0853,34.7818"
 ```
 
-Each flag is orthogonal to the others — pick the dimensions your test cares about. `--device` covers the most ground for mobile testing; the rest layer on locale-aware behavior, theming, and location-aware features.
+**Escape-hatch example — record video + capture HAR alongside iPhone emulation:**
+
+```bash
+npx st4ck@latest browse launch https://app.example.com \
+  --session plenty-recorded \
+  --device "iPhone 14 Pro" \
+  --context-options '{"recordVideo":{"dir":"/tmp/v"},"recordHar":{"path":"/tmp/h.har"},"extraHTTPHeaders":{"X-Test-Run":"plenty-1"}}'
+```
+
+Each flag is orthogonal to the others — pick the dimensions your test cares about. `--device` covers the most ground for mobile testing; the rest layer on locale-aware behavior, theming, and location-aware features. `--context-options` is the open door for anything Playwright supports that isn't exposed as a curated flag.
 
 If you need to pass extra runner flags the wrapper doesn't know about, use the `--` separator:
 

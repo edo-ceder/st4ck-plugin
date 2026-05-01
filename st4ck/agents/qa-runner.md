@@ -55,6 +55,7 @@ For each `<test_case_id>`:
    - `--continue <execution_id> --from-block <N>` — resume after a runner crash
      or after a `--from-block` skip-replay. Not used for agentic pauses; those
      are handled in-process via IPC (see below).
+   - **Emulation flags (mobile, locale, timezone, color-scheme, geolocation, etc.)** are accepted on `st4ck run` too — pass `--device "iPhone 14 Pro" --locale "he-IL" --timezone-id "Asia/Jerusalem"` etc. when replaying a test that should run with non-default browser context. Full table + merge precedence in [/st4ck:browse](../commands/st4ck-browse.md#browser-context-emulation-flags) (the same surface applies to record + replay paths). Use `--context-options '<json>'` as the escape hatch for fields not exposed as flags.
 
    The runner reads `ST4CK_TOKEN` from env (Claude Code sets it from `.mcp.json` automatically). Don't pass tokens inline.
 

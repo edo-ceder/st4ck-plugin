@@ -22,6 +22,7 @@ npx st4ck@latest run <test_case_id> <base_url> \
 - `--mode=qa` (default) — runs signed tests; persists a `test_executions` row.
 - Use `--mode=authoring` only for `/st4ck-author` flows where the test is unsigned and the run is ephemeral.
 - `--continue <execution_id> --from-block <N>` — resume a prior run after handling an agentic block (see below).
+- **Browser-context emulation flags** (`--device`, `--viewport`, `--locale`, `--timezone-id`, `--color-scheme`, `--reduced-motion`, `--forced-colors`, `--geolocation`, `--permissions`, `--http-credentials`, `--offline`, `--bypass-csp`, `--context-options '<json>'`) are accepted on replay too — pass them when a test should run against a non-default Playwright context (mobile emulation, locale-aware app, etc.). Full table + merge precedence: [/st4ck:browse](st4ck-browse.md#browser-context-emulation-flags). Same surface for record and replay.
 - The runner reads `ST4CK_TOKEN` from env (Claude Code sets it from `.mcp.json` automatically). Don't pass it inline.
 
 Recordings produced by `/st4ck-author` (or by `/st4ck:browse launch --record`) live at `.st4ck/recordings/<slug>.md` — pass the file path directly to `npx st4ck@latest run <path>` to replay them, no DB roundtrip.

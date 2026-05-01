@@ -48,6 +48,8 @@ You don't dispatch other agents. You don't sign tests. You don't run them after 
 
    `@latest` resolves to the current release at invocation time (no manual version-pin needed). If the parent gave you a storage state path, append `-- --browser-mode=rehydrate <path>` (everything after `--` is forwarded verbatim to the runner). The wrapper returns the `runner_ready` envelope and detaches; from now on every primitive is one Bash call.
 
+   **For mobile / locale / timezone-aware journeys** — add Playwright-style emulation flags at launch time. The most useful ones: `--device "iPhone 14 Pro"` (viewport + UA + DPR + isMobile + hasTouch as a bundle), `--locale "he-IL"`, `--timezone-id "Asia/Jerusalem"`, `--color-scheme dark`, `--geolocation "lat,lon"` (auto-grants the geolocation permission). Plus `--context-options '<json>'` as an escape hatch for any Playwright `BrowserContextOptions` field not exposed as a flag (`recordVideo`, `recordHar`, `extraHTTPHeaders`, …). Full table + merge precedence in [/st4ck:browse](../commands/st4ck-browse.md#browser-context-emulation-flags).
+
    **Guardrail.** If you find yourself reaching for `mcp__playwright__*` tools, OR `st4ck-runner record` directly, OR `mkfifo` + raw `echo > FIFO` recipes, STOP — those are not available / not the right surface in this session. The wrapper (`st4ck browse`) is the canonical surface; primitives are your vocabulary; the component cache only populates from runner-issued primitives, so any detour around the wrapper leaves the cache empty and the cost curve never flips.
 
 8. **Drive with primitives — one Bash call per command.** Issue them one at a time:
