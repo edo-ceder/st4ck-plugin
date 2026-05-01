@@ -26,11 +26,15 @@ Returns the `runner_ready` envelope:
 ```json
 {
   "type": "runner_ready",
-  "page_url": "<url>",
+  "page_url": "https://app.example.com/login?next=%2Fdashboard",
+  "requested_url": "https://app.example.com/dashboard",
+  "redirected": true,
   "page_errors": [],
   "blank_page_detected": false
 }
 ```
+
+`page_url` is the **final** URL after navigation completed. `requested_url` is what the launch was asked to load; `redirected: true` is the cheap signal that the page silently bounced you somewhere else (auth-gate flips, stale-token → /login, locale rewrites). Compare the two when you need to know where you actually landed without an extra `evaluate "location.pathname"` round-trip.
 
 `page_errors` is the buffer of uncaught exceptions thrown by the page during load — non-empty often correlates with `blank_page_detected: true` (a Vercel preview deploy missing an env var, a broken bundle, a CSS rule hiding everything). The pageerror listener attaches before navigation, so module-load throws are caught on the first paint.
 
@@ -204,6 +208,12 @@ npx st4ck@latest browse snapshot --session foo
 npx st4ck@latest browse screenshot --session foo --out /tmp/audit.png
 npx st4ck@latest browse screenshot --session foo --out /tmp/full.png --full-page
 npx st4ck@latest browse screenshot --session foo --out /tmp/clip.jpg --type jpeg --quality 85 --clip 0,0,400,300
+
+# Locator-driven screenshot — capture just one element by accessible locator.
+# Beats pixel `--clip` for visual diffs because the locator survives layout shifts.
+# Same locator flags as click/fill: --by/--value/--name + optional --scope-by.
+npx st4ck@latest browse screenshot --session foo --out /tmp/btn.png --by role --value button --name "Save"
+npx st4ck@latest browse screenshot --session foo --out /tmp/card.png --by testid --value "user-card"
 ```
 
 `snapshot` / `url` / `page-errors` / `screenshot` are introspection-only — they don't land in the captured md file. Use `snapshot` liberally between actions, `page-errors` whenever the page behaves blank or unresponsive, and `screenshot` for visual audit / debugging when "evaluate-only" leaves you guessing whether layout is right.
