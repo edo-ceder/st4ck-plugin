@@ -198,9 +198,45 @@ npx st4ck@latest browse url --session foo
 
 # A11y snapshot of the current page.
 npx st4ck@latest browse snapshot --session foo
+
+# Screenshot to disk — for visual audits ("does this card render right at 360px?").
+# Pair with the agent's Read tool: capture, then read the PNG to inspect visually.
+npx st4ck@latest browse screenshot --session foo --out /tmp/audit.png
+npx st4ck@latest browse screenshot --session foo --out /tmp/full.png --full-page
+npx st4ck@latest browse screenshot --session foo --out /tmp/clip.jpg --type jpeg --quality 85 --clip 0,0,400,300
 ```
 
-`snapshot` / `url` / `page-errors` are introspection-only — they don't land in the captured md file. Use `snapshot` liberally between actions; use `page-errors` whenever the page behaves blank or unresponsive.
+`snapshot` / `url` / `page-errors` / `screenshot` are introspection-only — they don't land in the captured md file. Use `snapshot` liberally between actions, `page-errors` whenever the page behaves blank or unresponsive, and `screenshot` for visual audit / debugging when "evaluate-only" leaves you guessing whether layout is right.
+
+#### Mid-session viewport resize (recorded — replays restore the viewport mid-journey)
+
+```bash
+# Resize the layout viewport without changing UA / DPR / isMobile / hasTouch.
+# Use this to audit responsive breakpoints (360 / 393 / 414 / 768 / 1280) in
+# a single session instead of N launch/close cycles.
+npx st4ck@latest browse set_viewport_size --session foo --viewport 360x740
+npx st4ck@latest browse set_viewport_size --session foo --width 414 --height 896
+```
+
+Maps to Playwright's `page.setViewportSize`. Page-level — for a different logical device (different UA / touch / DPR), launch a fresh session with `--device <name>`.
+
+#### `wait_until` — Playwright's full wait surface
+
+```bash
+# Wait for a JS expression to return truthy (kind=custom, default if --js).
+npx st4ck@latest browse wait_until --session foo --js "document.querySelectorAll('[data-row]').length > 0" --timeout-ms 10000
+
+# Wait for the URL to match (kind=url) — page.waitForURL.
+npx st4ck@latest browse wait_until --session foo --url "**/dashboard"
+
+# Wait for an element to be visible / hidden / attached / detached (locator-driven).
+npx st4ck@latest browse wait_until --session foo --by role --value button --name "Save" --kind visible
+
+# Wait for the network to go idle (kind=networkidle).
+npx st4ck@latest browse wait_until --session foo --kind networkidle
+```
+
+`--kind` is inferred from which flag is set (`--url` → url, `--by` → visible, `--js` → custom); `--kind networkidle` stands alone with no other args. Override with explicit `--kind <v>`.
 
 ### 3. Close — finalize or abort
 
