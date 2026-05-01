@@ -1,6 +1,6 @@
 ---
 name: qa-runner
-description: Use this agent to execute one or more signed QA tests against a target environment. Drives the `st4ck` CLI (`npx st4ck@<version> run`) — handles agentic-block IPC pauses inline and returns structured per-test verdicts (passed/failed/blocked, execution_id, evidence). Cannot author tests, modify components, or sign reviews.
+description: Use this agent to execute one or more signed QA tests against a target environment. Drives the `st4ck` CLI (`npx st4ck@latest run`) — handles agentic-block IPC pauses inline and returns structured per-test verdicts (passed/failed/blocked, execution_id, evidence). Cannot author tests, modify components, or sign reviews.
 model: inherit
 color: cyan
 disallowedTools: mcp__playwright__*
@@ -46,11 +46,11 @@ For each `<test_case_id>`:
 2. **Invoke the runner via the `st4ck` brand binary.** Use Bash:
 
    ```bash
-   npx st4ck@<version> run <test_case_id> <base_url> \
+   npx st4ck@latest run <test_case_id> <base_url> \
      [--environment <env_id>] [--branch <name>] [--git-sha <sha>] \
      [--headless]
    ```
-   Substitute the latest published `st4ck` version (`npm view st4ck version`); the plugin manifest does not pin the CLI, so the docs are the only signal.
+   `@latest` resolves to the current release at invocation time. Pin to a specific version (e.g. `st4ck@0.2.0-alpha.1`) only when reproducibility matters (parent dispatch will tell you).
    - The runner defaults to `--mode=qa` — runs SIGNED tests and persists a `test_executions` row. This is what qa-runner always uses; never pass `--mode=authoring` here (that mode is reserved for `/st4ck-author` ephemeral runs and bypasses signature checks, which qa-runner refuses to do — see Pre-flight above).
    - `--continue <execution_id> --from-block <N>` — resume after a runner crash
      or after a `--from-block` skip-replay. Not used for agentic pauses; those
@@ -99,7 +99,7 @@ The full `st4ck browse` subcommand surface (launch, snapshot, click, fill, press
 
 1. **Parse the envelope** — `brief` is your primary instruction, `expected_outcome` is the verdict criterion. `session_name` names the live runner session; pass it as `--session <name>` (or `-s <name>`) to every `st4ck browse` invocation below. The runner already acquired the profile required by the block's `role`; you do not call `acquire_profile` again.
 2. **Execute the brief**:
-   - **Frontend brief** — drive the same browser context via `st4ck browse <op>` invocations: `npx st4ck@<version> browse snapshot --session <name>`, `npx st4ck@<version> browse click --session <name> --by role --value button --name "Save"`, `npx st4ck@<version> browse fill --session <name> --by label --value "Email" --text "alice@example.com"`, etc. The page state at the pause moment is already loaded.
+   - **Frontend brief** — drive the same browser context via `st4ck browse <op>` invocations: `npx st4ck@latest browse snapshot --session <name>`, `npx st4ck@latest browse click --session <name> --by role --value button --name "Save"`, `npx st4ck@latest browse fill --session <name> --by label --value "Email" --text "alice@example.com"`, etc. The page state at the pause moment is already loaded.
    - **Backend brief** — call `mcp__st4ck-dev__bubble_list_records` / `mcp__st4ck-dev__supabase_query`. **Backend blocks are SELECT-only by default.**
    - **Seed brief (platform-blocked setup)** — when the brief mentions "seed" or "platform-blocked", you may call `mcp__st4ck-dev__bubble_create_record` / `mcp__st4ck-dev__bubble_update_record` to create/update records that can't be created via UI (e.g., Bubble dropdown Input Changed workflows — KB 69bdb489). Record the created IDs in your trace so later blocks can reference them and teardown can clean them up via `mcp__st4ck-dev__bubble_delete_record`.
 3. **Decide pass/fail.** Write a short verdict + evidence (row count, field values, screenshot path) for the report.

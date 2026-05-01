@@ -40,23 +40,23 @@ You don't dispatch other agents. You don't sign tests. You don't run them after 
 7. **Spin up the Session via the `st4ck browse` CLI.** Launch in record mode against the journey's URL:
 
    ```bash
-   npx st4ck@<version> browse launch <url> \
+   npx st4ck@latest browse launch <url> \
      --session <slug> \
      --record --out .st4ck/recordings/<slug>.md \
      --instruction "<journey description>"
    ```
 
-   Substitute the latest `st4ck` version (`npm view st4ck version`); the plugin manifest does not pin the CLI version, so the docs are the only signal. If the parent gave you a storage state path, append `-- --browser-mode=rehydrate <path>` (everything after `--` is forwarded verbatim to the runner). The wrapper returns the `runner_ready` envelope and detaches; from now on every primitive is one Bash call.
+   `@latest` resolves to the current release at invocation time (no manual version-pin needed). If the parent gave you a storage state path, append `-- --browser-mode=rehydrate <path>` (everything after `--` is forwarded verbatim to the runner). The wrapper returns the `runner_ready` envelope and detaches; from now on every primitive is one Bash call.
 
    **Guardrail.** If you find yourself reaching for `mcp__playwright__*` tools, OR `st4ck-runner record` directly, OR `mkfifo` + raw `echo > FIFO` recipes, STOP — those are not available / not the right surface in this session. The wrapper (`st4ck browse`) is the canonical surface; primitives are your vocabulary; the component cache only populates from runner-issued primitives, so any detour around the wrapper leaves the cache empty and the cost curve never flips.
 
 8. **Drive with primitives — one Bash call per command.** Issue them one at a time:
 
    ```bash
-   npx st4ck@<version> browse snapshot --session <slug>
-   npx st4ck@<version> browse click --session <slug> --by role --value button --name "Sign In"
-   npx st4ck@<version> browse fill --session <slug> --by label --value "Email" --text "alice@example.com"
-   npx st4ck@<version> browse wait_until --session <slug> --js "document.querySelector('[data-testid=dashboard]') !== null" --timeout-ms 10000
+   npx st4ck@latest browse snapshot --session <slug>
+   npx st4ck@latest browse click --session <slug> --by role --value button --name "Sign In"
+   npx st4ck@latest browse fill --session <slug> --by label --value "Email" --text "alice@example.com"
+   npx st4ck@latest browse wait_until --session <slug> --js "document.querySelector('[data-testid=dashboard]') !== null" --timeout-ms 10000
    ```
 
    Each primitive is verified against the live page before the next; the response envelope (status, evidence) lands on stdout. **You do NOT call `agent-browser` directly, you do NOT call `st4ck-runner record` directly, you do NOT manage a FIFO** — the `st4ck browse` CLI is the abstraction. Full subcommand surface in [/st4ck:browse](../commands/st4ck-browse.md).
@@ -67,7 +67,7 @@ You don't dispatch other agents. You don't sign tests. You don't run them after 
    - **One-off bits** — leave as inline primitives in the eventual `scenario_blocks`.
    - **An existing component matches** — reuse it; record which sub-sequence becomes that component call in the test.
 
-10. **Reach the journey's verified end state.** When the page reflects the user-visible outcome the test claims to verify, finalize the recording with `npx st4ck@<version> browse close --session <slug>`. The wrapper sends `{"op":"continue"}` to the runner and waits for the `record_complete` envelope; the md trace is written to the path you set via `--out`.
+10. **Reach the journey's verified end state.** When the page reflects the user-visible outcome the test claims to verify, finalize the recording with `npx st4ck@latest browse close --session <slug>`. The wrapper sends `{"op":"continue"}` to the runner and waits for the `record_complete` envelope; the md trace is written to the path you set via `--out`.
 
 ## STEP SHAPE — v2 primitive format (MANDATORY)
 

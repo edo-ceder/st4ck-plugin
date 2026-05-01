@@ -82,10 +82,10 @@ If classification is unclear → fetch `get_qa_methodology(section: "decisions")
 
 ### Step 4 — Reproduce the failure locally
 
-Before fixing, reproduce via `/st4ck:browse` (or one Bash call per primitive — `npx st4ck@<version> browse launch <url> --session debug-<slug>` then `… browse <op> --session debug-<slug>` per step):
+Before fixing, reproduce via `/st4ck:browse` (or one Bash call per primitive — `npx st4ck@latest browse launch <url> --session debug-<slug>` then `… browse <op> --session debug-<slug>` per step):
 
 1. Get the fixture page / session URL from the log.
-2. Open a runner session against that URL with `/st4ck:browse` (or `npx st4ck@<version> browse launch …` directly).
+2. Open a runner session against that URL with `/st4ck:browse` (or `npx st4ck@latest browse launch …` directly).
 3. Drive the IPC primitives that match the failing eval step; observe what the live page returns. Each primitive is one Bash call — never spawn the runner manually, never run `mkfifo`, never echo into a FIFO. The wrapper handles the IPC plumbing.
 4. Inspect the snapshot — confirm your diagnosis.
 

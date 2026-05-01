@@ -56,11 +56,11 @@ For each resolved suite:
 For each test in the suite, run the **deterministic runner** via the `st4ck` brand binary (zero LLM cost outside any agentic blocks):
 
 ```bash
-npx st4ck@<version> run <test_case_id> <base_url> \
+npx st4ck@latest run <test_case_id> <base_url> \
   --environment <env_id> [--branch <name>] [--git-sha <sha>]
 ```
 
-Substitute the latest `st4ck` version (`npm view st4ck version`); the plugin manifest does not pin the CLI, so the docs are the only signal.
+`@latest` resolves to the current release at invocation time. Pin to an explicit version (e.g. `npx st4ck@0.2.0-alpha.1`) only when reproducibility matters.
 
 The runner reads `ST4CK_TOKEN` from the environment. Claude Code automatically sets it from the `headers.Authorization` value in `.mcp.json`. Do not pass it inline.
 
@@ -101,7 +101,7 @@ Pause envelope shape:
 
 1. Parse the pause envelope — `brief` is your primary instruction, `expected_outcome` is the verdict criterion. `session_name` names the live runner session; pass it as `--session <name>` (or `-s <name>`) to every `st4ck browse` invocation below. The runner has already acquired any profile required by the block's `role`; you do not call `acquire_profile` again.
 2. Execute the brief:
-   - **Frontend brief** — drive the same browser context via `st4ck browse <op>` invocations: `npx st4ck@<version> browse snapshot --session <name>`, `npx st4ck@<version> browse click --session <name> --by role --value button --name "Save"`, etc. Full vocabulary in [/st4ck:browse](st4ck-browse.md). The page state at the pause moment is already loaded.
+   - **Frontend brief** — drive the same browser context via `st4ck browse <op>` invocations: `npx st4ck@latest browse snapshot --session <name>`, `npx st4ck@latest browse click --session <name> --by role --value button --name "Save"`, etc. Full vocabulary in [/st4ck:browse](st4ck-browse.md). The page state at the pause moment is already loaded.
    - **Backend brief** — call `mcp__st4ck-dev__bubble_list_records` / `mcp__st4ck-dev__supabase_query` to verify data via the project's DB. Backend blocks are SELECT-only by default.
 3. **Decide pass/fail.** Write a short verdict + evidence (row count, field values, screenshot path).
 4. **Resume the runner.** Send `{"op":"continue"}` to the paused runner's stdin — the runner records the agentic block as passed (using your trace) and proceeds to the next block in the same browser context. No process restart, no `--continue` flag.

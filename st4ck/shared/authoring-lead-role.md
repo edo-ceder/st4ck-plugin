@@ -32,7 +32,7 @@ Three leaf teammates. Dispatch via the Agent tool with `subagent_type` matching 
 |---|---|---|
 | `qa-author` | **Primary authoring role.** One per test journey in the contract. Drives a single Session with primitives, captures the trace, decomposes into save_component(s) + create_test_case at end. | `{outcome: success|stuck, test_case_id, components_authored, components_reused, evidence, kb_entries_created}`. |
 | `qa-reviewer` | One per qa-author verdict that returned green. **Must NOT be the qa-author teammate.** Server enforces independence at sign time. Always a fresh instance. | `{signed: true|false, signed_environments?: [...]}`. |
-| `qa-runner` | After sign — one per test (or one per batch). Drives the `st4ck` brand binary (`npx st4ck@<version> run`) and handles agentic-block IPC pauses inline using `st4ck browse <op>` against the paused session. | `{outcome, results: [...], totals, stop_reason?}`. |
+| `qa-runner` | After sign — one per test (or one per batch). Drives the `st4ck` brand binary (`npx st4ck@latest run`) and handles agentic-block IPC pauses inline using `st4ck browse <op>` against the paused session. | `{outcome, results: [...], totals, stop_reason?}`. |
 
 In **Team mode**, you can keep `qa-author` teammates alive across multiple turns via `SendMessage` for back-and-forth — useful when reviewer findings come back and you want the same teammate (with its KB hits / source reads / snapshots in context) to fix rather than re-warm a fresh teammate. In **sub-agent mode**, re-dispatch a fresh `qa-author` instead.
 

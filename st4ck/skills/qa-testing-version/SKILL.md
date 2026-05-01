@@ -133,7 +133,7 @@ If review fails with findings: re-dispatch the same qa-author teammate (Team mod
 
 ### Step 8 — Dispatch qa-runner (smoke + execution)
 
-Once tests are signed, dispatch `qa-runner` with the test_case_ids + base_url + environment. The runner drives the `st4ck` brand CLI (`npx st4ck@<version> run`), handles agentic-block IPC pauses inline (`{"op":"continue"}` over the runner's stdin; brief steps drive via `st4ck browse <op>` against the paused `session_name`), and returns per-test verdicts. For version tests born red (waiting on phase-gated signing), skip this step until `dev_task.status='shipped'` flips the test to eligible.
+Once tests are signed, dispatch `qa-runner` with the test_case_ids + base_url + environment. The runner drives the `st4ck` brand CLI (`npx st4ck@latest run`), handles agentic-block IPC pauses inline (`{"op":"continue"}` over the runner's stdin; brief steps drive via `st4ck browse <op>` against the paused `session_name`), and returns per-test verdicts. For version tests born red (waiting on phase-gated signing), skip this step until `dev_task.status='shipped'` flips the test to eligible.
 
 ### Step 9 — Report back to orchestrator (or user)
 

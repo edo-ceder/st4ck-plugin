@@ -36,7 +36,7 @@ Tool restrictions are enforced via Claude Code's agent `tools` / `disallowedTool
   ```
 
 ### Recommended
-- **`st4ck` CLI** (`npx st4ck@<version>`) — brand binary that wraps the deterministic Playwright runner behind three verbs: `st4ck author` (bootstrap), `st4ck browse [--record]` (drive a session, one Bash call per primitive), `st4ck run` (replay a signed test or md trace). Without it, tests are authored but not executed. Substitute the latest version via `npm view st4ck version`; the plugin manifest schema has no version-pinning field.
+- **`st4ck` CLI** (`npx st4ck@latest`) — brand binary that wraps the deterministic Playwright runner behind three verbs: `st4ck author` (bootstrap), `st4ck browse [--record]` (drive a session, one Bash call per primitive), `st4ck run` (replay a signed test or md trace). Without it, tests are authored but not executed. `@latest` always resolves to the current release; pin to an explicit version (e.g. `@0.2.0-alpha.1`) only when CI reproducibility matters.
 
 ### Optional
 - **context7** — for technology validation during plan authoring
@@ -189,7 +189,7 @@ All four skills load the QA methodology on demand from the server (`backend/src/
 - **QA Author code isolation is prompt-based** — the agent has Read access to the full codebase and browser access for UI exploration, but is instructed to default to code (not PRD/specs unless provided)
 - **Version test promotion is manual** — promoting version tests to regression is a manual st4ck operation
 - **Sequential browser sessions** — parallel QA execution across suites is unverified; falls back to sequential
-- **QA Runner requires the `st4ck` CLI** — invoke via `npx st4ck@<version> run <test_id> <base_url>` from `Bash` (substitute the latest version per `npm view st4ck version`; the plugin manifest has no version-pinning field). The runner ships its own Chromium via Playwright (`npx playwright install chromium` if needed). Tests run headed by default.
+- **QA Runner requires the `st4ck` CLI** — invoke via `npx st4ck@latest run <test_id> <base_url>` from `Bash`. The runner ships its own Chromium via Playwright (`npx playwright install chromium` if needed). Tests run headed by default.
 - **Code Reviewer uses Sonnet** — intentionally hardcoded to `model: sonnet` for consistent code review quality regardless of session model. All other agents inherit the session model.
 - **`disallowedTools` verification needed** — if this field doesn't work for plugin agents, QA Author/Reviewer will need full `tools` allowlists
 - **Supervisor (Phase 1) is manual** — you must run `/supervise` yourself. Phase 2 will add an automated Stop hook.

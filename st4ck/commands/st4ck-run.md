@@ -9,22 +9,22 @@ You are an orchestrator for deterministic test execution. You invoke the runner,
 
 ## Runner shape
 
-The runner sits behind the `st4ck` brand binary. You drive it via `npx st4ck@<version> run` — the wrapper resolves the underlying runner on your behalf. Playwright-backed, IPC-pause for agentic handoff, deterministic replay for everything else.
+The runner sits behind the `st4ck` brand binary. You drive it via `npx st4ck@latest run` — the wrapper resolves the underlying runner on your behalf. Playwright-backed, IPC-pause for agentic handoff, deterministic replay for everything else.
 
 ```bash
-npx st4ck@<version> run <test_case_id> <base_url> \
+npx st4ck@latest run <test_case_id> <base_url> \
   [--environment <env_name>] [--branch <name>] [--git-sha <sha>] \
   [--mode=qa] [--headless]
 ```
 
-> **Pin the version.** Substitute the latest `st4ck` published version (`npm view st4ck version`). The plugin manifest does not pin the CLI version (no schema field for it), so the docs are the only signal — pin in your invocations.
+> **Version.** `@latest` resolves to the current release. To pin (CI reproducibility, rollback), substitute an explicit version (e.g. `npx st4ck@0.2.0-alpha.1`); see `npm view st4ck versions` for the list. The plugin manifest schema has no version-pinning field.
 
 - `--mode=qa` (default) — runs signed tests; persists a `test_executions` row.
 - Use `--mode=authoring` only for `/st4ck-author` flows where the test is unsigned and the run is ephemeral.
 - `--continue <execution_id> --from-block <N>` — resume a prior run after handling an agentic block (see below).
 - The runner reads `ST4CK_TOKEN` from env (Claude Code sets it from `.mcp.json` automatically). Don't pass it inline.
 
-Recordings produced by `/st4ck-author` (or by `/st4ck:browse launch --record`) live at `.st4ck/recordings/<slug>.md` — pass the file path directly to `npx st4ck@<version> run <path>` to replay them, no DB roundtrip.
+Recordings produced by `/st4ck-author` (or by `/st4ck:browse launch --record`) live at `.st4ck/recordings/<slug>.md` — pass the file path directly to `npx st4ck@latest run <path>` to replay them, no DB roundtrip.
 
 ## Resolution
 
@@ -50,7 +50,7 @@ From `$ARGUMENTS`:
 ## Execute
 
 ```bash
-npx st4ck@<version> run <test_case_id> <base_url> \
+npx st4ck@latest run <test_case_id> <base_url> \
   --environment <env_id> [--branch <name>] [--git-sha <sha>]
 ```
 
@@ -89,7 +89,7 @@ Your job during the pause:
 
 1. Parse the pause envelope — `brief` is your primary instruction, `expected_outcome` is the verdict criterion. The `session_name` field names the runner's session — pass it as `--session <name>` (or `-s <name>`) to every `st4ck browse` invocation below.
 2. Execute the brief:
-   - **Frontend brief** — drive the same browser context via `st4ck browse <op>` invocations against the paused session. Examples: `npx st4ck@<version> browse snapshot --session <name>`, `npx st4ck@<version> browse click --session <name> --by role --value button --name "Save"`, `npx st4ck@<version> browse fill --session <name> --by label --value "Email" --text "alice@example.com"`. The page state at the pause moment is already loaded — see [/st4ck:browse](st4ck-browse.md) for the full subcommand vocabulary.
+   - **Frontend brief** — drive the same browser context via `st4ck browse <op>` invocations against the paused session. Examples: `npx st4ck@latest browse snapshot --session <name>`, `npx st4ck@latest browse click --session <name> --by role --value button --name "Save"`, `npx st4ck@latest browse fill --session <name> --by label --value "Email" --text "alice@example.com"`. The page state at the pause moment is already loaded — see [/st4ck:browse](st4ck-browse.md) for the full subcommand vocabulary.
    - **Backend brief** — call `mcp__st4ck-dev__bubble_list_records` / `mcp__st4ck-dev__supabase_query` to verify data via the project's DB. Backend blocks are SELECT-only by default.
 3. When the brief is satisfied, send `{"op":"continue"}` to the paused runner's stdin (the runner is still listening on its own stdin even while you drive the session via `browse`). The runner records the agentic block as passed and resumes the next block in the same browser context.
 4. If you cannot satisfy the brief, send `{"op":"abort","reason":"<short>"}` — the runner records the block as failed and exits.
@@ -99,7 +99,7 @@ Your job during the pause:
 If a test failed at block N and the user wants to retry after a fix:
 
 ```bash
-npx st4ck@<version> run <test_case_id> <base_url> \
+npx st4ck@latest run <test_case_id> <base_url> \
   --continue <execution_id> --from-block <N>
 ```
 
