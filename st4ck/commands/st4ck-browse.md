@@ -248,6 +248,29 @@ npx st4ck@latest browse wait_until --session foo --kind networkidle
 
 `--kind` is inferred from which flag is set (`--url` → url, `--by` → visible, `--js` → custom); `--kind networkidle` stands alone with no other args. Override with explicit `--kind <v>`.
 
+> **Strict-mode uniqueness for locator-driven kinds.** `--kind visible|hidden|attached|detached` calls Playwright's `locator.waitFor({state})`, which **errors when the locator resolves to more than one element** ("strict mode violation"). Selectors like `[data-sidebar="menu-button"]` (10 sidebar items) or `[data-sidebar="menu"]` (main + footer nav) fail with `element_ambiguous` even when one of those elements would have satisfied the wait.
+>
+> Disambiguate with a unique anchor — e.g. `a[data-sidebar="menu-button"][href="/"]` (the home link, always rendered exactly once), or scope into a container via `--scope-by role --scope-value navigation`. If you need to wait on "any of N matching items," use `--kind custom --js "document.querySelectorAll('...').length > 0"` instead.
+
+#### Authoring auth components for replay (storage_state rehydration)
+
+The runner snapshots `storage_state` after the first green block boundary and rehydrates it on subsequent runs (TTL-bound). For projects with a `/auth` page that redirects authenticated users to `/`, an `auth.login` component that does `wait_until visible #signin-email` will time out on the second run — the form never renders because the user is already logged in.
+
+**Idempotent auth components must wrap the form interaction in a `branch` primitive:**
+
+```json
+{
+  "primitive": "branch",
+  "args": {
+    "condition": { "kind": "visible", "locator": { "by": "css", "value": "#signin-email" }, "timeout_ms": 5000 },
+    "then": [/* fill email + password + submit */],
+    "else": [/* nothing — already logged in */]
+  }
+}
+```
+
+Then a unified post-condition (e.g. `wait_until visible role=main`) covers both branches. Without this pattern, every project that records a v2 auth component will rediscover the redirect-to-/ failure mode on the second run.
+
 ### 3. Close — finalize or abort
 
 ```bash
