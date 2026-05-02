@@ -9,6 +9,14 @@ description: Use this skill when the user wants to author regression tests that 
 
 @${CLAUDE_PLUGIN_ROOT}/shared/authoring-lead-role.md
 
+> **2026-05-02 surface notes (Plenty token-cost ship)** — affect every component you author through this skill:
+> - **`save_and_sign(name, method, eval_sequence, ..., linked_execution_id)`** — composed verb. Use after a passing run to skip the three-call `save_component → review_component → sign_component_review` dance for self-reviewed flows. ~2× faster end-to-end.
+> - **`validate_component(name, method, eval_sequence)`** — dry-run validator. Lints SELECTOR_QUALITY_RULE + primitive shape WITHOUT writing.
+> - **OK/NF contract is server-enforced** — `evaluate` returning `"nf:..."` fails the action with `error.class="check_failed"` (runner alpha.13+, 2026-05-02). Author asserts as `return <verified> ? 'ok: <state proof>' : 'nf: <reason>'`. KB `9430ae8a` (updated) + KB `04e3cc28` (legacy class this closes).
+> - **`wait_until kind: "js"` is now an alias for `kind: "custom"`** (runner alpha.12+).
+> - **Sign-gate tolerates non-critical block failures** — `linked_execution_id` against `exec.status === "failed"` accepts when every critical block + the exercising block passed. KB `1dc73359`.
+> - **Slim response shapes** on save / review / sign — full echoed component is gone. `get_component(name, method)` for full payload.
+
 Regression tests protect shipped behavior — NOT new features (use `qa-testing-version` for in-development work).
 
 ## Phase 4 §4.2 — orchestration pattern

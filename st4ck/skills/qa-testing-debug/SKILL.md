@@ -7,6 +7,11 @@ description: Use this skill when a test or component has FAILED and needs diagno
 
 You are diagnosing a test failure. A test run has failed; your job is to find the root cause, propose a minimal fix, and drive the fix to green — without expanding scope.
 
+> **2026-05-02 surface notes (Plenty F31/F32/F33 ship):**
+> - **First diagnostic call:** `mcp__st4ck-qa__get_execution_log(execution_id, failed_only: true, drop_aborted_network: true, max_console_entries_per_block: 20)` — slim mode returns ONLY the first failed block + the immediately-preceding passed block, with per-block aggregate caps so the response fits in a tool result instead of auto-spilling to file. Defaults are sane; override `max_console_entries_per_block` upward if you need more context near the failure.
+> - **`error.class: "check_failed"` with `error.detail` starting `"nf:"`** is the F33 contract enforcement (runner alpha.13+) — the component's evaluate step asserted a post-condition and the assertion failed. The full nf: string is in `error.detail`; that's your starting clue. NOT a runner bug — the component is correctly reporting that the intended state change didn't happen.
+> - **Sign-gate failures with "expected status=passed"**: if your test had a non-critical block fail/skip but every critical block passed, the gate now accepts `status="failed"` executions on the criticals-only path. See KB `1dc73359`. No code change needed — re-run the same `save_and_sign` / `sign_component_review` call.
+
 ## Phase 5 error class taxonomy
 
 The runner's structured_log carries an `error.class` per failed primitive (per `backend/src/mcp/v3/methodology.ts` § block_format) plus the new Phase 3.x IPC primitives. Use the class to route diagnosis:

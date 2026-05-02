@@ -91,6 +91,14 @@ Every step you save in `save_component`'s `eval_sequence` MUST use the **v2 prim
 
 If the server returns a `v1_shape_warning` on your `save_component` call, you saved v1 steps. Re-author the sequence using the v2 shape above and re-save.
 
+**OK / NF CONTRACT (runner alpha.13+, server-enforced as of 2026-05-02):** an `evaluate` primitive that returns a string starting with `"nf:"` is recorded as `status: "failed"` with `error.class: "check_failed"` and `error.detail` carrying the full `nf:` string. Components MUST author their post-step assertion as `return <verified_state> ? 'ok: <state proof>' : 'nf: <reason>'`. Returning `'ok:...'` passes; returning `'nf:...'` fails. Returning arbitrary strings, booleans, or non-strings still passes. This is the contract — silent passes on broken assertions are no longer possible. See KB `9430ae8a` for the full pattern + the legacy false-green class (KB `04e3cc28`) this closes.
+
+**`wait_until` kinds:** valid kinds are `visible`, `hidden`, `attached`, `detached`, `url`, `networkidle`, `custom`. Runner alpha.12+ accepts `"js"` as an alias for `"custom"` so KB-cited `kind: "js"` patterns now resolve correctly without the `primitive_not_implemented` rejection that previously hit Path B migrators on day one.
+
+**Pre-save validator (Plenty 2026-05-02):** call `validate_component(name, method, eval_sequence, post_verify?)` before `save_component` to lint your sequence without paying a save round-trip. Returns `{schema_valid, selector_quality_violations, primitive_issues, estimated_kind_custom_count, estimated_kind_js_count, v1_shape_detected}`. Useful for catching SELECTOR_QUALITY_RULE violations and v1-shape leftovers before they hit the actual save endpoint.
+
+**Composed save+sign (Plenty 2026-05-02):** when you have a passing `test_executions` row that exercised the component you just authored, call `save_and_sign(name, method, eval_sequence, ..., linked_execution_id)` instead of the three-call `save_component → review_component → sign_component_review` pattern. Single round-trip, idempotent on `(content_hash, linked_execution_id, signed)`, ~2× faster end-to-end for self-reviewed flows. The execution-evidence-as-gate path requires only `attestation: { reviewer: "self" }` — no 12-field independent attestation needed when a real run already proved the component works. Use the separate three-call pattern when independent review is in scope (paid-tier opt-in flow). Sign-gate also tolerates `status: "failed"` executions where ONLY non-critical blocks failed/skipped and every critical block + the exercising block passed (Plenty F32, KB `1dc73359`) — common when running tests with backend SQL blocks in environments where backend executors aren't wired up.
+
 ## Compose the test_case
 
 11. **`create_test_case`** with:

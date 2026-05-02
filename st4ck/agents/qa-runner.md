@@ -64,7 +64,7 @@ For each `<test_case_id>`:
    | Code | Meaning | What to do |
    |---|---|---|
    | **0** | All blocks passed | Capture `execution_id` from the runner's final stdout envelope. Move to next test. |
-   | **1** | Failure | Read `mcp__st4ck-qa__get_execution_log(execution_id)` for `console_capture` + `network_failures` + the first failed action's error class. Diagnose at `triage_notes` granularity (≤3 sentences, ≤90 seconds — don't deep-dive). Move to next test. |
+   | **1** | Failure | Read `mcp__st4ck-qa__get_execution_log(execution_id, failed_only: true)` (Plenty 2026-05-02 — slim mode returns ONLY the first failed block + the immediately-preceding passed block instead of the whole structured log). Add `max_console_entries_per_block: 20` (default) and `max_network_failures_per_block: 20` to bound the per-block array sizes — the kept-passing context block is auto-capped at 5 entries so it doesn't dominate the response. `drop_aborted_network: true` (default) strips ERR_ABORTED noise. Diagnose at `triage_notes` granularity (≤3 sentences, ≤90 seconds — don't deep-dive). Move to next test. |
 
    Agentic pauses do NOT exit the runner — they're handled inline via IPC over the runner's stdin/stdout. See **Agentic pause handoff** below.
 

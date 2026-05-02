@@ -11,6 +11,14 @@ description: Migrate legacy tests to the v2 component format. Triggers on "migra
 
 This skill replaces three earlier skills (router + Path A + Path B); collapsed 2026-04-26 because every dispatch boundary is a place agents lose context.
 
+> **2026-05-02 surface notes (Plenty token-cost ship)** — affect every component you author through this skill:
+> - **`save_and_sign(name, method, eval_sequence, ..., linked_execution_id)`** — composed verb. Use after a passing run to skip the `save_component → review_component → sign_component_review` three-call dance for self-reviewed flows. Idempotent on `(content_hash, linked_execution_id, signed)`. ~2× faster end-to-end.
+> - **`validate_component(name, method, eval_sequence)`** — dry-run validator. Lints SELECTOR_QUALITY_RULE + primitive shape WITHOUT writing. Use before `save_component` to catch v1-shape leftovers and unqualified selectors without paying a save round-trip.
+> - **OK/NF contract is now server-enforced** — `evaluate` primitives that return a string starting with `"nf:"` fail the action with `error.class="check_failed"` (runner alpha.13+, 2026-05-02). Components must author asserts as `return <verified> ? 'ok: <state proof>' : 'nf: <reason>'`. See KB `9430ae8a` (updated) and KB `04e3cc28` (the legacy false-green class this closes at the new runner's evaluate boundary).
+> - **`wait_until kind: "js"` is now an alias for `kind: "custom"`** (runner alpha.12+) — no more day-one `primitive_not_implemented` walls when migrating KB-cited shapes literally.
+> - **Sign-gate tolerates non-critical block failures** — `linked_execution_id` against an `exec.status === "failed"` execution now accepts when every critical block + the exercising block passed. Common case: backend SQL block skipped because backend executors aren't wired up. See KB `1dc73359`.
+> - **Slim response shapes** on save / review / sign — full echoed component is gone. Recover via `get_component(name, method)` if you need the full payload.
+
 ## Two internal branches
 
 Migration is a single decision tree. Per test, you classify the shape and run the right branch inline.
