@@ -118,6 +118,70 @@ Execute signed regression suites and report results:
 - Observe-only — does not attempt fixes
 - Schedulable for nightly runs
 
+### `/version-author` — Version Test Authoring
+
+```
+/version-author <plan path | plan_phase ID | dev_task ID | feature name>
+```
+
+Author version tests for in-development features — tests that go GREEN as implementation lands phase-by-phase:
+- Reads the plan-phase Journey table verbatim as the test contract
+- Dispatches one `qa-author` per journey + independent `qa-reviewer` for sign
+- Each test carries `gates_on_plan_phase` so it stays red until the phase ships
+- `intent_sources` populated from the plan's user-journey row + dev_task
+- Pairs with `/implement` Track B for TDD-style development
+
+### `/st4ck:migrate-tests` — Legacy → v2 Component Format
+
+```
+/st4ck:migrate-tests <suite_id | suite_name | --test <id> | --scope project>
+```
+
+Migrate legacy tests to the v2 component format. The skill classifies each test by shape via `classify_test_migration_shape` and runs the appropriate branch inline:
+- **Agentic re-author** (~10k tokens/test) for `agentic` and `mixed` shapes — same orchestration as `/regression-author`
+- **Component-upgrade** (~2k tokens/component) for `components_v1` shape — mostly mechanical translation via `primitive_registry` + fresh snapshot
+- Per-component escalation between branches handled inline
+- Optional pre-seed for projects with N>20 legacy tests where components recur
+
+### `/st4ck:impact` — Test Impact Analysis
+
+```
+/st4ck:impact [--base <branch>] [--staged] [--propose] [--limit <N>]
+```
+
+Agent-driven test impact analysis (Phase 5 §5.2). Reads the local git diff and surfaces every QA test whose components cite the changed lines:
+- Queues `test_design_change` dev_tasks for QA
+- `--base <branch>` diff against a base (default `HEAD^`); `--staged` for staged-only
+- `--propose` invokes the LLM-driven propose subworkflow per affected component (expensive; cap with `--limit`)
+- Read-mostly: writes via `create_dev_task` only
+
+### `/st4ck:browse` — Drive a Real Browser One Primitive at a Time
+
+```
+/st4ck:browse <url> [--session <name>] [--record [--out <path>]] [--instruction "<text>"]
+              [--device "<name>"] [--viewport <WxH>] [--locale <bcp47>]
+              [--timezone-id <iana>] [--headless] [...]
+```
+
+Each subcommand is one Bash invocation; the wrapper hides the runner + FIFO behind the scenes:
+- Multi-session out of the box (`-s alice` / `-s bob` route to independent runners)
+- 14-flag emulation surface aligned to Playwright field names (device, viewport, locale, timezone, color-scheme, reduced-motion, geolocation, permissions, etc.)
+- Optional `--record` saves the trace as a deterministic md test you can replay with `st4ck run`
+- Returns the `runner_ready` envelope including `requested_url`, `redirected`, `page_errors`, `blank_page_detected` so you catch silent auth-bounces and broken bundles on first paint
+
+### `/st4ck-run` — Deterministic Test Execution
+
+```
+/st4ck-run <test_case_id | test name | recording.md path> [--environment <env>]
+```
+
+Execute a signed test case via the runner with full agentic-block IPC handling:
+- Wraps `npx st4ck@latest run` with auth (`ST4CK_TOKEN` from MCP), pre-flight, and result reporting
+- Handles agentic block handoff via IPC pause (parent agent drives the brief inline against the same `session_name`)
+- `--continue <execution_id> --from-block <N>` resumes a prior run after the agentic block
+- Same browser-context emulation surface as `/st4ck:browse` on replay
+- Recordings from `/st4ck:browse --record` at `.st4ck/recordings/<slug>.md` replayable directly (no DB roundtrip)
+
 ### `/debug` — Bug Investigation & Fix
 
 ```
@@ -188,16 +252,40 @@ Phase 2 (coming): automated Stop hook that runs this check every time the agent 
 - After major releases to lock down behavior
 - Nightly confidence checks
 
+**Use `/version-author` for:**
+- TDD-style development against a plan with phased journeys
+- Tests that should stay red until a `dev_task` ships (per `gates_on_plan_phase`)
+- Pairing with `/implement` Track B
+
+**Use `/st4ck:migrate-tests` for:**
+- Bringing legacy tests into the v2 component format
+- Bulk modernization of an existing regression suite
+
+**Use `/st4ck:impact` for:**
+- Pre-merge "what tests does my diff break?" analysis
+- Triaging a refactor's QA blast radius
+- Optionally generating proposed component updates with `--propose`
+
+**Use `/st4ck:browse` for:**
+- Driving a real browser one primitive at a time during authoring
+- Recording deterministic md traces for replay (`--record`)
+- Multi-session exploration (different roles, parallel flows)
+
+**Use `/st4ck-run` for:**
+- Executing a signed test case manually
+- Resuming a run after an agentic-block IPC pause
+- Replaying a `.st4ck/recordings/<slug>.md` file produced by `/st4ck:browse --record`
+
 ### QA skills auto-activate on free-text intent
 
-The QA authoring commands (`/regression-author`, `/migrate-tests`) have matching **intent skills** that auto-activate when you speak naturally. Saying "create regression tests for Expenses" triggers the `qa-testing-regression` skill (equivalent to `/regression-author Expenses`). The slash commands remain as the explicit muscle-memory form.
+The QA authoring commands have matching **intent skills** that auto-activate when you speak naturally. Saying "create regression tests for Expenses" triggers the `qa-testing-regression` skill (equivalent to `/regression-author Expenses`). The slash commands remain as the explicit muscle-memory form.
 
 | Intent phrase | Skill | Equivalent command |
 |---|---|---|
 | "create regression tests for X" / "protect module Y" | `qa-testing-regression` | `/regression-author X` |
-| "write tests for this feature/plan" / "version tests for" | `qa-testing-version` | (used by `/implement` Track B) |
+| "write tests for this feature/plan" / "version tests for" | `qa-testing-version` | `/version-author <plan>` (also used by `/implement` Track B) |
 | "this test is failing" / "debug this run" / "selector is wrong" | `qa-testing-debug` | (no slash command) |
-| "migrate these tests" / "convert to component format" | `qa-testing-migration` | `/migrate-tests <suite>` |
+| "migrate these tests" / "convert to component format" | `qa-testing-migration` | `/st4ck:migrate-tests <suite>` |
 
 All four skills load the QA methodology on demand from the server (`backend/src/mcp/v3/methodology.ts`) via `get_qa_methodology` — no methodology prose is duplicated client-side.
 
