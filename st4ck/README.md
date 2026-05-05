@@ -17,23 +17,33 @@ Tool restrictions are enforced via Claude Code's agent `tools` / `disallowedTool
 ## Prerequisites
 
 ### Required
-- **st4ck MCP server** must be configured in your project `.mcp.json` or `~/.claude.json`. This plugin cannot configure MCP servers (security restriction for plugins).
+- **st4ck MCP servers** must be configured in your project `.mcp.json` or `~/.claude.json`. This plugin cannot configure MCP servers (security restriction for plugins).
 
   Add to your project's `.mcp.json`:
   ```json
   {
     "mcpServers": {
-      "st4ck": {
-        "type": "url",
-        "url": "https://app.st4ck.io/mcp/?apiKey=YOUR_API_KEY"
-      },
       "st4ck-qa": {
         "type": "url",
         "url": "https://app.st4ck.io/mcp/v3/?apiKey=YOUR_API_KEY"
+      },
+      "st4ck-pm": {
+        "type": "url",
+        "url": "https://app.st4ck.io/mcp/pm/?apiKey=YOUR_API_KEY"
+      },
+      "st4ck-dev": {
+        "type": "url",
+        "url": "https://app.st4ck.io/mcp/dev/?apiKey=YOUR_API_KEY"
+      },
+      "st4ck-ops": {
+        "type": "url",
+        "url": "https://app.st4ck.io/mcp/ops/?apiKey=YOUR_API_KEY"
       }
     }
   }
   ```
+
+  Four role-scoped servers: `st4ck-qa` (test authoring + execution), `st4ck-pm` (PRDs, specs, decisions, todos), `st4ck-dev` (dev tasks, code/data introspection, issues), `st4ck-ops` (usage, quotas, admin). The retired single-server `/mcp/` and `/mcp/v2/` paths return 410 Gone.
 
 ### Recommended
 - **`st4ck` CLI** (`npx st4ck@latest`) — brand binary that wraps the deterministic Playwright runner behind three verbs: `st4ck author` (bootstrap), `st4ck browse [--record]` (drive a session, one Bash call per primitive), `st4ck run` (replay a signed test or md trace). Without it, tests are authored but not executed. `@latest` always resolves to the current release; pin to an explicit version (e.g. `@0.2.0-alpha.1`) only when CI reproducibility matters.
@@ -44,10 +54,18 @@ Tool restrictions are enforced via Claude Code's agent `tools` / `disallowedTool
 
 ## Installation
 
+In Claude Code:
+
 ```bash
-claude plugin add /path/to/st4ck-plugin
-# or from GitHub (when published):
-# claude plugin add st4ck/st4ck-plugin
+/plugin marketplace add edo-ceder/st4ck-plugin
+/plugin install st4ck@st4ck-marketplace
+```
+
+Then `/reload-plugins` to activate. From a local checkout:
+
+```bash
+/plugin marketplace add /path/to/st4ck-plugin
+/plugin install st4ck@st4ck-marketplace
 ```
 
 ## Commands
