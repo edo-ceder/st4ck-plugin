@@ -64,7 +64,7 @@ The runner stays alive across the whole test. Final exit codes are simple — no
 
 ## Agentic block handoff (IPC pause)
 
-When the runner reaches an agentic block, it stays alive and emits an `agentic_pause` envelope on **stdout** with a `session_name` field naming the active session, then waits for the next IPC command. You handle the work inline by issuing `st4ck browse <op>` invocations against the same session name; when satisfied, send a final `{"op":"continue"}` over stdin (the runner is still listening on its stdin throughout) — and the runner resumes the next block in the same browser context, no `--continue` flag, no `--from-block`, page state preserved.
+When the runner reaches an agentic block, it stays alive and emits an `agentic_pause` envelope on **stdout**, then waits for IPC commands on **stdin**. You handle the work inline by sending JSON-per-line primitive ops on the runner's stdin (the FIFO you're already piping into for `{"op":"continue"}`); when the brief is satisfied, send a final `{"op":"continue"}` and the runner resumes the next block in the same browser context — no `--continue` flag, no `--from-block`, page state preserved.
 
 **Agentic blocks are a LAST RESORT.** They should only exist when the block requires runtime decision-making (branching on unpredictable state, visual judgment, or dynamic query construction). Date pickers, edit dialogs, and Radix dropdowns are scriptable as components — challenge any agentic block before executing it.
 
@@ -76,7 +76,7 @@ The pause envelope shape:
   "test_case_id": "...",
   "execution_id": "...",
   "block_index": 3,
-  "session_name": "<runner-session-name>",
+  "session_name": "runner_<execution_id>",
   "brief": "Verify today's daily order...",
   "expected_outcome": "Order exists with submitted status and 1+ line items",
   "page_url": "https://...",
@@ -84,16 +84,32 @@ The pause envelope shape:
 }
 ```
 
-For the work itself, drive the same session via the `st4ck browse` CLI — see [/st4ck:browse](st4ck-browse.md) for the full subcommand surface. The CLI handles all the IPC plumbing; you make one Bash call per primitive.
+`session_name` is informational telemetry only — it identifies this paused runner across logs. **It does NOT route `st4ck browse <op> --session <name>` calls** during a run-mode pause. Run-mode runners have their own internal Playwright instance and do not register a session.json in the `st4ck browse` CLI registry. The orchestrator drives the runner during the pause by writing primitive JSON ops to the runner's **stdin**, exactly the same shape you'd send to `st4ck browse` but written directly as JSON-per-line into the FIFO.
 
-Your job during the pause:
+### How to drive the runner's browser during a pause
 
-1. Parse the pause envelope — `brief` is your primary instruction, `expected_outcome` is the verdict criterion. The `session_name` field names the runner's session — pass it as `--session <name>` (or `-s <name>`) to every `st4ck browse` invocation below.
-2. Execute the brief:
-   - **Frontend brief** — drive the same browser context via `st4ck browse <op>` invocations against the paused session. Examples: `npx st4ck@latest browse snapshot --session <name>`, `npx st4ck@latest browse click --session <name> --by role --value button --name "Save"`, `npx st4ck@latest browse fill --session <name> --by label --value "Email" --text "alice@example.com"`. The page state at the pause moment is already loaded — see [/st4ck:browse](st4ck-browse.md) for the full subcommand vocabulary.
-   - **Backend brief** — call `mcp__st4ck-dev__bubble_list_records` / `mcp__st4ck-dev__supabase_query` to verify data via the project's DB. Backend blocks are SELECT-only by default.
-3. When the brief is satisfied, send `{"op":"continue"}` to the paused runner's stdin (the runner is still listening on its own stdin even while you drive the session via `browse`). The runner records the agentic block as passed and resumes the next block in the same browser context.
-4. If you cannot satisfy the brief, send `{"op":"abort","reason":"<short>"}` — the runner records the block as failed and exits.
+Every primitive op the `st4ck browse` CLI exposes is also accepted on the runner's stdin during agentic_pause. You write one JSON object per line into the same FIFO you opened to send `{"op":"continue"}`. The runner emits one response envelope on stdout per op, then waits for the next.
+
+Frontend brief examples (write each JSON line to the runner's stdin FIFO):
+
+```json
+{"op":"snapshot"}
+{"op":"click","locator":{"by":"role","value":"button","options":{"name":"Save"}}}
+{"op":"fill","locator":{"by":"label","value":"Email"},"value":"alice@example.com"}
+{"op":"wait_until","args":{"kind":"visible","locator":{"by":"role","value":"dialog"}}}
+{"op":"evaluate","js":"document.querySelectorAll('[data-row-id]').length"}
+```
+
+Full op vocabulary (single source of truth = runner's `VALID_OPS` const): `evaluate`, `navigate`, `click`, `fill`, `press`, `select`, `check_box`, `hover`, `upload`, `click_by_text`, `hover_by_text`, `type_by_text`, `branch`, `wait_until`, `remember`, `recall`, `url`, `snapshot`, `screenshot`, `set_viewport_size`, `page_errors`, plus the control ops `continue` and `abort`. Argument shapes mirror the `st4ck browse <op>` flag set: see [/st4ck:browse](st4ck-browse.md) for the per-op argument tables — same payloads, just JSON-on-stdin instead of CLI flags.
+
+Backend brief: call `mcp__st4ck-dev__bubble_list_records` / `mcp__st4ck-dev__supabase_query` to verify data via the project's DB (SELECT-only by default). The runner's stdin is for browser ops; backend verification stays in MCP land.
+
+### Your job during the pause
+
+1. Parse the pause envelope — `brief` is your primary instruction, `expected_outcome` is the verdict criterion. The `session_name` field is for telemetry only (see above).
+2. Execute the brief by writing JSON-per-line ops to the runner's stdin FIFO (frontend) and/or calling `mcp__st4ck-dev__supabase_query` etc. (backend).
+3. When the brief is satisfied, write `{"op":"continue"}` on the runner's stdin. The runner records the block as passed and resumes the next block in the same browser context.
+4. If you cannot satisfy the brief, write `{"op":"abort","reason":"<short>"}` — the runner records the block as failed and exits.
 
 ## Rerun from failure
 
