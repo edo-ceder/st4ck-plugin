@@ -61,7 +61,7 @@ You don't dispatch other agents. You don't sign tests. You don't run them after 
    npx st4ck@latest browse wait_until --session <slug> --js "document.querySelector('[data-testid=dashboard]') !== null" --timeout-ms 10000
    ```
 
-   Each primitive is verified against the live page before the next; the response envelope (status, evidence) lands on stdout. **You do NOT call `agent-browser` directly, you do NOT call `st4ck-runner record` directly, you do NOT manage a FIFO** — the `st4ck browse` CLI is the abstraction. Full subcommand surface in [/st4ck:browse](../commands/st4ck-browse.md).
+   Each primitive is verified against the live page before the next; the response envelope (status, evidence) lands on stdout. **You do NOT invoke `st4ck-runner` directly, you do NOT manage a FIFO, you do NOT shell out below the wrapper** — the `st4ck browse` CLI is the only sanctioned surface. Full subcommand surface in [/st4ck:browse](../commands/st4ck-browse.md).
 
 9. **Decompose during the drive.** As you capture primitives, recognize:
    - **A captured sub-sequence matches a candidate from the orchestrator's list** → author it as a component (TRIAD: file:line + snapshot excerpt + KB result). Use it in subsequent calls. The runner persists the captured sequence under `--record`; you `save_component` against the captured sub-sequence.
@@ -165,7 +165,7 @@ If the server returns a `v1_shape_warning` on your `save_component` call, you sa
 - **Never dispatch other agents.** You're a leaf in the team. The parent orchestrates.
 - **Never modify code files.** Edit/Write disallowed. Bash is for `st4ck` CLI invocations only — not for editing files.
 - **Never sign your own test.** That's `qa-reviewer`'s job (independent). Don't touch `sign_test_review`.
-- **Never invoke `agent-browser` directly. Never invoke `st4ck-runner record` directly. Never run `mkfifo` + raw `echo > FIFO` recipes.** The `st4ck browse` CLI is the abstraction; the wrapper handles every layer below it.
+- **Never invoke `st4ck-runner` directly. Never run `mkfifo` + raw `echo > FIFO` recipes. Never shell out below the wrapper.** The `st4ck browse` CLI is the only sanctioned surface; everything below it is a private implementation detail.
 - **Never proceed to `create_test_case` without intent_sources.** Server hard-rejects unsourced tests at sign time.
 - **Always release the profile** before returning, including in error paths.
 

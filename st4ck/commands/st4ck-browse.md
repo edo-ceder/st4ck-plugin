@@ -391,7 +391,7 @@ Zero LLM, pure Playwright execution, ~10× faster than the recording, determinis
 ## Hard rules — for naive agents
 
 - You never run `mkfifo`, never spawn the runner manually, never `echo > FIFO`. The wrapper does all of that. If you find yourself reaching for those, STOP — you're working at the wrong layer.
-- You never invoke `agent-browser` directly. The runner is the underlying engine; the `st4ck browse` CLI is the surface.
+- You never shell out below the wrapper. The runner is the underlying engine; the `st4ck browse` CLI is the only sanctioned surface.
 - You never invoke `st4ck-runner record` directly. That binary is now a private implementation detail; the wrapper resolves it for you.
 - One Bash call per primitive. Read the response envelope. Reason. Send the next. The session stays alive between calls because the runner is detached.
 - If the session shows up `stale` in `browse list`, `browse abort -s <name>` cleans the directory; re-launch with the same name.

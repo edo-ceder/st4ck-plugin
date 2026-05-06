@@ -55,7 +55,7 @@ When dispatching the `qa-author` sub-agent (one per test journey), compose a pro
 
 ### INSTRUCTIONS (verbatim — do not paraphrase)
 
-You drive ONE test journey end-to-end against the live app using the `st4ck browse` CLI's primitive surface. You don't call `agent-browser` directly, you don't call `st4ck-runner record` directly, you don't run `mkfifo` or manage FIFOs — the `st4ck browse` wrapper is the abstraction. You author components organically as you drive (the captured trace IS your verified work). At the end, you compose the test_case and return.
+You drive ONE test journey end-to-end against the live app using the `st4ck browse` CLI's primitive surface. You don't call `st4ck-runner` directly, you don't run `mkfifo` or manage FIFOs — the `st4ck browse` wrapper is the only sanctioned surface; everything below it is a private implementation detail. You author components organically as you drive (the captured trace IS your verified work). At the end, you compose the test_case and return.
 
 Your first actions MUST be in this order:
 1. `get_qa_methodology(section: "block_format")` — keep `methodology_key` for `methodology_attestation` on `create_test_case`. 2-hour TTL.
@@ -63,7 +63,7 @@ Your first actions MUST be in this order:
 
 Follow the workflow in your role-doc (`agents/qa-author.md`). Key non-negotiables the server enforces:
 
-- Drive with primitives (`click`, `fill`, `wait_until`, `snapshot`, `evaluate`, `press`, `select`, `check_box`, `hover`, `upload`, plus the LLM-driven `check`, `see`, `extract`, `do`). Each is one Bash call: `npx st4ck@latest browse <op> --session <slug> [flags]`. Never call `agent-browser` directly. Never call `st4ck-runner record` directly.
+- Drive with primitives (`click`, `fill`, `wait_until`, `snapshot`, `evaluate`, `press`, `select`, `check_box`, `hover`, `upload`, plus the LLM-driven `check`, `see`, `extract`, `do`). Each is one Bash call: `npx st4ck@latest browse <op> --session <slug> [flags]`. Never invoke `st4ck-runner` directly; the wrapper is the abstraction.
 - Selector quality: never bare tags. For non-semantic elements use the wrapper's text-disambiguation subcommands `click-by-text` / `hover-by-text` / `type-by-text` with optional `--within-by role --within-value dialog`.
 - Every new component must complete the CODE + SNAPSHOT + KB TRIAD in `selector_notes` before `save_component`. Missing any leg fails review.
 - DATA REALISM: every specific value MUST exist for the profile at runtime. Verify via snapshot, project DB SELECT, or fixture-seeded.
@@ -103,7 +103,7 @@ Follow the review checklist you just fetched (the methodology's review section).
 
 1. `review_test(test_case_id)` → returns the test body + `review_token`.
 2. Run the checklist. Read source code for every UI string, route, column, and DOM selector cited. Grep before trusting.
-3. For component-format tests: verify COMPONENT TRIAD COMPLETENESS on every referenced component (code + snapshot + KB). Missing any leg = reject. Verify component `eval_sequence` uses primitive shapes that the `st4ck browse` CLI / runner can dispatch — no raw `agent-browser` invocations, no `st4ck-runner record` calls baked into eval sequences, no FIFO manipulation.
+3. For component-format tests: verify COMPONENT TRIAD COMPLETENESS on every referenced component (code + snapshot + KB). Missing any leg = reject. Verify component `eval_sequence` uses primitive shapes that the `st4ck browse` CLI / runner can dispatch — no raw `st4ck-runner` invocations baked into eval sequences, no FIFO manipulation, no shell-outs below the wrapper.
 4. For every data-mutating block: seed → verify seed → assert → cleanup pattern present.
 5. `sign_test_review(test_case_id, review_token, review_attestation, execution_id)` when all checks pass. Attestation fields get cross-validated server-side against actual block content — do not attest falsely. The server also validates execution_id belongs to this test and has status="passed".
 

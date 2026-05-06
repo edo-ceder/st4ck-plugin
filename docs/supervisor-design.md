@@ -229,7 +229,7 @@ When the supervisor finds gaps, it produces a message injected as a **user messa
 Some rules belong in the QA authoring/running skills. The supervisor CHECKS these were followed, but the skill TEACHES them.
 
 ### For qa-author agent:
-1. **Before writing tests, explore the UI** via agent-browser (preferred) or Playwright MCP (fallback). Navigate the app, note actual button labels, sidebar states, form fields. Don't guess from code alone. For no-code platforms (Bubble, etc.) this is the ONLY way to learn the UI — codebase grep is useless.
+1. **Before writing tests, explore the UI** via `st4ck browse` (preferred) or Playwright MCP (fallback). Navigate the app, note actual button labels, sidebar states, form fields. Don't guess from code alone. For no-code platforms (Bubble, etc.) this is the ONLY way to learn the UI — codebase grep is useless.
 2. **Test source priority**: requirements/specs (if in context) → plan (if exists) → code + running app. Don't read PRD/specs unless the user provides them or they're already in context. Default to code.
 3. **Every test must create its own preconditions.** Never assume app state. Block 0/1 should set up whatever the test needs.
 4. **Be explicit in block instructions.** List actual button text, expected sidebar items, specific URLs. Don't write "the action button" — write the button's actual label.
