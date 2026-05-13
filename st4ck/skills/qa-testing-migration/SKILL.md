@@ -84,7 +84,12 @@ Same orchestration shape as `/st4ck:regression-author`:
 1. **Derive `intent_sources`** — read test metadata (name, description, suite), linked PRD nodes / specs / dev_tasks if present, else populate `{source_type:'free_text', source_text: <inferred from description + action list>}`.
 2. **Component discovery (if not already done in Step 5.5).** `get_component_discovery({intent_sources, module})`.
 3. **Pre-acquire profile + capture storageState** for the batch.
-4. **Dispatch one `qa-author`** per legacy test (parallel via multiple `Agent` calls; up to 5 concurrent). Pass each: the legacy test's full `scenario_blocks` (verbatim, as the journey description), `intent_sources`, candidate-component list, existing component library, `profile_id` + storageState path.
+3a. **Pre-fetch project context for the dispatch brief** (Ori e757fc2f, 2026-05-14). Call ONCE before dispatch and inject into every qa-author brief:
+   - `get_qa_methodology(section: "component_authoring")` → key + expires_at
+   - `get_test_environments()` → qa_notes
+   - `get_components({summary: true})` → slim catalog (server-cached 5min — call is cheap, but capture data once so teammates don't re-call)
+   Sub-agents that re-fetch this context at startup over-bill the orchestration by ~50KB per spawn. Pass it in the prompt instead.
+4. **Dispatch one `qa-author`** per legacy test (parallel via multiple `Agent` calls; up to 5 concurrent). Pass each: the legacy test's full `scenario_blocks` (verbatim, as the journey description), `intent_sources`, candidate-component list, existing component library, `profile_id` + storageState path, AND the pre-fetched context from step 3a.
 5. **Verdict recovery** mode-aware (Team mode → SendMessage; sub-agent mode → re-dispatch fresh).
 6. **Promotion sweep** across the just-authored test_cases.
 7. **Dispatch fresh `qa-reviewer`** per test for sign.

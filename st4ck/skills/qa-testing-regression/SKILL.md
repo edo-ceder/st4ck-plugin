@@ -107,6 +107,20 @@ Present to the user:
 3. **`get_component_discovery({intent_sources, module})`** — combines existing-tests / dev-plan / PRD / codebase signals to produce a **candidate-component list** with cross-test reuse pre-evaluated (§7.1 5-rule rules 2/3/5). The candidate list will be handed to each qa-author.
 4. **Probe Agent Teams availability.** Try `Agent(subagent_type:'qa-author', ...)` with a no-op prompt + `SendMessage` to that teammate. If `SendMessage` returns successfully → **Team mode** (multi-turn teammates kept alive). If it errors → **sub-agent mode** (one-shot dispatch). Pick mode for the WHOLE orchestration.
 5. **Pre-acquire profile + capture storageState** (recommended): `acquire_profile({role, environment_id})` once for the whole batch; drive a quick login session yourself; capture storageState to `.st4ck/state-<module>.json`. Pass `profile_id` + storageState path into each qa-author dispatch so teammates skip login.
+6. **Pre-fetch + inject project context into the dispatch brief** (Ori e757fc2f, 2026-05-14). Sub-agents that fetch methodology + env_notes + components at startup pay ~50KB per spawn. Halve that by passing the data inline. Fetch once before dispatch:
+   - `get_qa_methodology(section: "component_authoring")` — capture `data.key` AND `data.expires_at` (TTL is 24h now; one fetch covers the whole orchestration).
+   - `get_test_environments()` — capture `qa_notes` for the env you're targeting.
+   - `get_components({summary: true})` — server-side 5min cache means the call itself is cheap, but YOU still get the data once. Pass the slim catalog to each teammate so they don't re-call.
+
+   Bake into each `qa-author` dispatch brief:
+   ```
+   Pre-loaded context (do NOT re-fetch):
+   - methodology_key for component_authoring: <key> (expires <iso>)
+   - env qa_notes: <text>
+   - existing component catalog (slim): <JSON from get_components summary>
+   - reference idiom: <component UUID from §5.6 bootstrap, if applicable>
+   ```
+   Teammates that ignore the pre-loaded context and re-fetch are over-billing the orchestration. If you see the same `get_qa_methodology` call from 3 different teammates in one orchestration, your dispatch brief isn't doing its job.
 
 ### Step 6 — Dispatch one qa-author per test journey
 
