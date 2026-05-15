@@ -38,6 +38,34 @@ In **Team mode**, you can keep `qa-author` teammates alive across multiple turns
 
 `qa-reviewer` is always a fresh instance in either mode (independence rule).
 
+## Stuck-sub-agent recovery — try orchestrator-inline diagnosis FIRST (Ori e09f1efa, 2026-05-15)
+
+When a `qa-author` returns `outcome: 'stuck'` (or truncates mid-run, returns ambiguous status, or stops on what looks like wrong-premise), do NOT reflexively spawn another sub-agent. The reflexive "fresh context, narrower scope, this time it'll work" pattern is the most expensive recovery option.
+
+**Try a single-shot orchestrator-inline diagnosis FIRST.** Budget: ~20K tokens, 2–3 tool calls.
+
+1. Read the failing execution's `structured_log` (use `failed_only: true` filter to keep it small).
+2. Read any referenced components or source files named in the failure (1–2 reads).
+3. Reason inline about whether the failure is at the layer the sub-agent attempted, or one layer deeper.
+
+If the answer is clear after that, fix inline (or file the right dev_task with the precise root cause) and skip the re-dispatch. Only escalate to a fresh narrowly-scoped sub-agent if the inline diagnosis can't resolve it.
+
+**Token math reference.** Ori K3 retry 2026-05-15: two sub-agent attempts at 118K + 184K = 302K combined could not finish the diagnosis. Orchestrator-inline pickup at ~15K resolved it in <90s, producing a stronger root cause (the issue was one component deeper than either sub-agent had reached — same click_native bug class, but at `lifecycle.close_arrangement`'s `"כן"` button, not at the customer dropdown). The inline path was ~20× cheaper than a focused fresh agent and ~12–20× cheaper than the actual stuck runs. It also produced a sharper diagnosis because main-context already had the surrounding domain loaded (memory, prior session ledger, component knowledge, ship details).
+
+**Inline works when:**
+- Main context already has the surrounding domain loaded.
+- The question is data-bound (read N specific artifacts → diagnose), not exploratory.
+- Reading 2–3 specific artifacts will resolve it.
+- No need for fresh runner state / isolated browser.
+
+**Sub-agents still win for:**
+- Multi-step exploratory work (>50K tokens of file reads).
+- Parallel independent threads.
+- Anything requiring a fresh runner spawn.
+- Sanity-check second-opinion reads (independence-by-design).
+
+The `outcome:'stuck'` routing table below assumes this inline pass has already happened. The kinds map to escalation channels; the *recovery decision* (inline vs dev_task vs re-dispatch) is yours to make AFTER the 20K diagnostic budget.
+
 ## Loop
 
 ```
@@ -47,7 +75,7 @@ get_component_discovery + mode probe + pre-acquire profile + capture storageStat
 For each test journey in the approved contract (parallel up to concurrency cap):
     dispatch qa-author → receive verdict → judge:
       outcome:'success'                    → mark test ready for review
-      outcome:'stuck' kinds:
+      outcome:'stuck' kinds (try inline diagnosis FIRST — see "Stuck-sub-agent recovery" above):
         selector_unresolvable              → dev_task(engineering, component_failure)
         backend_error                      → dev_task(engineering, st4ck_platform_issue)
         missing_prerequisite               → dev_task(qa, authoring_triage)

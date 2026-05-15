@@ -119,7 +119,9 @@ As each teammate returns:
 - Any additional edge cases the author discovered during code reading beyond the plan?
 - `get_components()` — every referenced component exists?
 
-If a teammate returns `outcome: 'stuck'`, route per the §5.7 escalation matrix in the lead role-doc. **For recoverable stucks where you have new info to share** (e.g., a missing component the orchestrator can supply via a quick separate dispatch):
+If a teammate returns `outcome: 'stuck'` (or truncates / returns ambiguous status), DO NOT reflexively spawn another sub-agent. **Try orchestrator-inline diagnosis FIRST** — read the failing execution's `structured_log` (`failed_only: true`), read 1–2 referenced components, reason inline about whether the failure is one layer deeper than the sub-agent reached. Budget ~20K tokens, 2–3 tool calls. See `shared/authoring-lead-role.md` § "Stuck-sub-agent recovery" for the full pattern.
+
+Only after the inline pass, route per the §5.7 escalation matrix. **For recoverable stucks where you have new info to share** (e.g., a missing component the orchestrator can supply via a quick separate dispatch):
 - **Team mode**: `SendMessage` the same teammate with the new info. It keeps its context (KB hits, source reads, snapshots) and revises its work.
 - **Sub-agent mode**: Re-dispatch a fresh `qa-author` with the original spec + the new info appended. New context window, same outcome shape.
 

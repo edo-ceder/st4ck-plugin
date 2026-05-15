@@ -140,7 +140,9 @@ As each teammate returns:
 - Every referenced component exists (`get_components()` cross-check)?
 - Research artifact has `<sources_read>` with every cited file?
 
-If a teammate returns `outcome: 'stuck'`, route per the §5.7 escalation matrix in the lead role-doc. **For recoverable stucks where you have new info to share:**
+If a teammate returns `outcome: 'stuck'` (or truncates / returns ambiguous status), DO NOT reflexively spawn another sub-agent. **Try orchestrator-inline diagnosis FIRST** — read the failing execution's `structured_log` (`failed_only: true`), read 1–2 referenced components, reason inline about whether the failure is one layer deeper than the sub-agent reached. Budget ~20K tokens, 2–3 tool calls. See `shared/authoring-lead-role.md` § "Stuck-sub-agent recovery" for the full pattern + Ori K3 token math (15K inline beat 302K combined sub-agent attempts).
+
+Only after the inline pass, route per the §5.7 escalation matrix. **For recoverable stucks where you have new info to share:**
 - **Team mode**: `SendMessage` the same teammate with the new info.
 - **Sub-agent mode**: Re-dispatch a fresh `qa-author` with original spec + new info appended.
 
