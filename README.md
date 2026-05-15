@@ -6,10 +6,10 @@ The full Claude Code plugin for st4ck. Where `st4ck-lite` covers recording + rep
 
 ```bash
 # Inside Claude Code:
-/st4ck:implement "Add a per-customer pallet allocation cap"   # full feature lifecycle
-/st4ck:debug "Order edits aren't propagating to the shop"      # role-separated debug flow
-/st4ck:po-research "Should orders be editable after submit?"   # PO discovery + options
-/st4ck:impact                                                  # diff → which tests are affected
+/st4ck:implement "Add a per-team usage cap to the billing portal"   # full feature lifecycle
+/st4ck:debug "Profile edits aren't appearing in the activity feed"  # role-separated debug flow
+/st4ck:po-research "Should refunds be reversible after settlement?" # PO discovery + options
+/st4ck:impact                                                       # diff → which tests are affected
 ```
 
 Every command dispatches purpose-built subagents with constrained tool surfaces — no one agent does everything, every step has a checkpoint, and quality is structurally enforced.
@@ -61,35 +61,36 @@ Three reviewer subagents — `prd-reviewer-po`, `prd-reviewer-qa`, `prd-reviewer
 
 **3. The intent layer is canonical.** PRDs, specs, and ADRs are the source of truth for behavior; code is the implementation that has to match them. When a test fails, the first question is "does the spec say this should pass?" — not "is the test wrong?". The PRD authoring skills bundled here exist because most platforms ship without this layer and only realize they need it after the first regression cycle.
 
+**The result:** authoring cost trends *down* as the suite grows — every new test reuses signed components, every component reuses signed intent. Compare Gherkin/Cucumber, where each new scenario rebuilds glue code from scratch and step-definition maintenance scales linearly with the suite.
+
 ---
 
-## Free vs paid
+## Tiers
 
-This plugin is the open-source / self-host tier. The full `app.st4ck.io` platform adds:
+This plugin is the **workspace orchestration tier** — open-source code that pairs with an `app.st4ck.io` workspace. The workspace implements the signed-review backend the principles above depend on; the plugin is the orchestration surface that drives it. The full paid platform on top adds:
 
 - LLM self-heal on selector drift (Tier-2 healing).
 - Cross-project knowledge base.
-- TRIAD attestation + server-enforced review.
 - Coverage reporting against intent sources.
 - Security test generation pipeline.
 - Multi-project + multi-environment orchestration.
 
 → Full platform: [st4ck.io](https://st4ck.io)
 
-For the minimal recording + replay surface without lifecycle orchestration, use the [st4ck-lite plugin](https://github.com/st4ck/st4ck-lite) instead.
+For the minimal recording + replay surface without lifecycle orchestration, use the [st4ck-lite plugin](https://github.com/edo-ceder/st4ck-lite) instead — free, no server, no account.
 
 ---
 
 ## What lives in this repo
 
-- `.claude-plugin/plugin.json` — Claude Code marketplace metadata
+- `.claude-plugin/marketplace.json` — Claude Code marketplace metadata
 - `st4ck/skills/` — the bundled skill set (lifecycle + PRD authoring)
 - `st4ck/commands/` — slash command aliases
 - `st4ck/agents/` — role-constrained subagents (code, QA, PRD reviewers)
 - `docs/` — methodology + architecture documentation
 - `poc/` — proof-of-concept work feeding back into the plugin
 
-The runner itself is the `st4ck-runner` npm package.
+Two npm packages underneath — the `st4ck` brand binary (CLI wrapper) plus the `st4ck-runner` it wraps. The lite plugin uses the same pair.
 
 ---
 
@@ -98,8 +99,8 @@ The runner itself is the `st4ck-runner` npm package.
 In Claude Code:
 
 ```bash
-/plugin marketplace add st4ck
-/plugin install st4ck
+/plugin marketplace add edo-ceder/st4ck-plugin
+/plugin install st4ck@st4ck-marketplace
 ```
 
 Requires an `app.st4ck.io` workspace for the lifecycle skills' MCP server connections. Without one, you can still use the PRD authoring skills (file-only) and the recording subset.
