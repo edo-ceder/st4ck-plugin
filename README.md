@@ -31,7 +31,6 @@ Every command dispatches purpose-built subagents with constrained tool surfaces 
 | `/st4ck:regression-author` | Author regression test suites for shipped features |
 | `/st4ck:regression-run` | Execute signed regression suites and report results with evidence (observe-only) |
 | `/st4ck:version-author` | Author version tests for in-development features (green as implementation lands) |
-| `/st4ck:qa-testing-migration` | Migrate legacy tests to the v2 component format |
 | `/st4ck:qa-testing-debug` | Diagnose + fix a failed test or component |
 | `/st4ck:st4ck-run` | Execute a deterministic test using the runner (with agentic-block IPC pause + rerun from failure) |
 | `/st4ck:st4ck-browse` | Drive a real browser one IPC primitive at a time, optional `--record` saves as a deterministic md test |
@@ -67,17 +66,25 @@ Three reviewer subagents — `prd-reviewer-po`, `prd-reviewer-qa`, `prd-reviewer
 
 ## Tiers
 
-This plugin is the **workspace orchestration tier** — open-source code that pairs with an `app.st4ck.io` workspace. The workspace implements the signed-review backend the principles above depend on; the plugin is the orchestration surface that drives it. The full paid platform on top adds:
+st4ck ships in three tiers. This plugin is the middle one.
 
-- LLM self-heal on selector drift (Tier-2 healing).
-- Cross-project knowledge base.
-- Coverage reporting against intent sources.
-- Security test generation pipeline.
-- Multi-project + multi-environment orchestration.
+| Capability | `st4ck-lite` | `st4ck` (this plugin) | `app.st4ck.io` paid |
+|---|:---:|:---:|:---:|
+| Record + deterministic md replay (zero LLM, zero $) | ✓ | ✓ | ✓ |
+| Locator-priority ladder (Tier-1 self-heal) | ✓ | ✓ | ✓ |
+| PRD authoring + 3-angle review pipeline | ✓ | ✓ | ✓ |
+| Lifecycle orchestration (`po-research` → `plan` → `implement` → `debug` → `impact`) | — | ✓ | ✓ |
+| Role-constrained code + QA agents | — | ✓ | ✓ |
+| Server-enforced signed reviews + attestation | — | ✓ | ✓ |
+| LLM self-heal on selector drift (Tier-2) | — | — | ✓ |
+| Cross-project knowledge base | — | — | ✓ |
+| Coverage reporting against intent sources | — | — | ✓ |
+| Security test generation pipeline (4-phase) | — | — | ✓ |
+| Multi-project + multi-environment orchestration | — | — | ✓ |
 
-→ Full platform: [st4ck.io](https://st4ck.io)
-
-For the minimal recording + replay surface without lifecycle orchestration, use the [st4ck-lite plugin](https://github.com/edo-ceder/st4ck-lite) instead — free, no server, no account.
+- **`st4ck-lite`** — free OSS plugin. No account, no service, no MCP. Record tests with an agent, replay forever, zero $. → [github.com/edo-ceder/st4ck-lite](https://github.com/edo-ceder/st4ck-lite)
+- **`st4ck` (this plugin)** — open-source orchestration code that pairs with an `app.st4ck.io` workspace. The workspace implements the signed-review backend the principles above depend on; the plugin is the surface that drives it.
+- **`app.st4ck.io` paid platform** — adds healing, knowledge base, coverage analytics, security test generation, and multi-project orchestration on top. → [st4ck.io](https://st4ck.io)
 
 ---
 
