@@ -66,6 +66,25 @@ If the answer is clear after that, fix inline (or file the right dev_task with t
 
 The `outcome:'stuck'` routing table below assumes this inline pass has already happened. The kinds map to escalation channels; the *recovery decision* (inline vs dev_task vs re-dispatch) is yours to make AFTER the 20K diagnostic budget.
 
+### Sub-agent truncation cleanup recipe (Ori 62a7a97f, 2026-05-16)
+
+When the sub-agent harness cuts a `qa-author` off mid-execution — narrative fragment instead of a final envelope, no `outcome:'success'|'stuck'` field, runner still alive on the host — it almost always leaves stale state for you to clean before you can re-dispatch or pivot. **Run this cleanup before doing anything else.** Skipping it cascades into pool-wide 409s on the same role for the next 20 minutes.
+
+1. **Identify the leaks.** From the agent's last messages, harvest:
+   - `execution_id` (if the runner had started — appears in any `agentic_pause`, `runner_ready`, or `save_execution_log` mention)
+   - `session_name` (the runner's session, typically `runner_<execution_id>`)
+   - profile role(s) acquired (named in any `acquire_profile` response the agent emitted, or inferable from the test's `scenario_blocks`)
+
+2. **Kill the runner.** If `session_name` is known: `npx st4ck@latest browse abort --session <name>` is the clean path (sends `{"op":"abort"}` over the FIFO, runner exits 1, releases its own locks). If the session name is unknown, fall back to OS: `pgrep -fa 'st4ck-runner.*run.*<test_id>'` → `kill -TERM <pid>`; if still alive after 2 s, `kill -KILL <pid>`. The runner's FIFO is auto-unlinked on exit (alpha.26+).
+
+3. **Force-release the locks.** For each role the sub-agent acquired, call `mcp__st4ck-qa__force_release_profile({role, project_id})`. The default 20-min lock TTL means an abandoned lock self-releases eventually, but the next test queued against the same pool will 409 until that happens — `force_release` short-circuits the wait. If you have `execution_id` and don't know the roles, query the lock table: `supabase_query "SELECT profile_id, role, locked_by FROM test_user_profiles WHERE locked_by = '<execution_id>'"`.
+
+4. **Save what you can from the truncated run.** Before pivoting, capture the last `save_execution_log` payload the agent emitted (search the transcript for `save_execution_log`). Even a partial structured_log lets a later inline-diagnostic pass (the pattern above) skip blocks 1-N and focus on the wall. If the agent never reached `save_execution_log`, the run is effectively lost — note this in the recovery summary.
+
+5. **Now make the recovery decision** per the rest of this section (inline diagnosis FIRST, then dev_task or re-dispatch).
+
+The harness-side fix (auto-cleanup on truncation, structured truncation envelopes — Ori 62a7a97f asks 1 + 2) lives in the Claude Code harness and is out of st4ck's surface. This recipe is the manual workaround until that lands.
+
 ## Loop
 
 ```
