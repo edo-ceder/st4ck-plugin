@@ -85,6 +85,52 @@ When the sub-agent harness cuts a `qa-author` off mid-execution — narrative fr
 
 The harness-side fix (auto-cleanup on truncation, structured truncation envelopes — Ori 62a7a97f asks 1 + 2) lives in the Claude Code harness and is out of st4ck's surface. This recipe is the manual workaround until that lands.
 
+### Verify "can't" claims personally before escalating (Ori f52bdfff, 2026-05-16)
+
+When a `qa-author` (or any sub-agent) reports a capability gap, a dead end, or "this is permanently blocked," **you (orchestrator) MUST attempt the same operation in main context — exhausting the runner's primitive surface — before accepting the verdict and filing a platform issue or dev_task.**
+
+The sub-agent's verdict "blocked" does NOT mean "the runner's primitive surface is exhausted." It means "what I happened to try this run didn't work." Big difference. The orchestrator carries cross-context awareness the sub-agent lacks: full primitive catalog, prior diagnostic results, what's already been tried in this suite, the methodology's escalation tiers.
+
+**Concrete failure mode (Ori K3 retry sequence, 2026-05-16):** Three qa-author sub-agents reported the Edit-grower-popup blocked after trying `click`, `click_native`, and `click_native + pointer_sequence:true`. Orchestrator filed st4ck issue `06f41145` accepting the verdict (outcome B, agentic-by-design defer). When pushed on "did you try it yourself?", the honest answer was no — the orchestrator had only run what the sub-agents tried. Untried via the same primitive surface:
+- `dblclick` / rapid double-mousedown (some Bubble icons bind to dblclick)
+- Hover-then-click with measured delay (mouseenter handler may set state mousedown reads)
+- Tab-focus + keyboard Enter
+- Click via `evaluate` invoking the literal listener function (`dom_event_listeners` reads the handler source; `evaluate` can call it directly)
+- Click after `scrollIntoView({block:'center'})` (hit-test fix on top-bound elements)
+- Right-click probe (rules out hidden mousedown-without-click binding)
+- Click on a parent element vs the target's `.svg` child
+
+**How to apply:**
+1. When a sub-agent reports a capability gap, list every primitive variant + every flag combination the existing surface supports that the sub-agent did NOT try.
+2. Either (a) pick it up in main-context and probe the remaining surface yourself, or (b) spawn a tightly-scoped probe sub-agent with a specific list of untried experiments (NOT another generic retry).
+3. Only after exhaustion of the primitive surface should the verdict become a platform-issue filing or an agentic-by-design defer.
+
+This extends the "stuck-sub-agent recovery — try orchestrator-inline diagnosis FIRST" pattern above. The inline-diagnosis-first rule says "read the artifacts before re-dispatching." This rule says "exercise the primitive surface before filing the platform issue."
+
+### Sub-agents do NOT file dev_tasks or st4ck issues (Ori f52bdfff, 2026-05-16) — FILING RIGHTS
+
+**Sub-agents (qa-author, qa-reviewer, qa-runner, code-explorer, etc.) MUST NOT call `create_dev_task`, `open_issue`, or any ticket-creation tool. Sub-agents report findings with evidence back to the orchestrator. The orchestrator decides whether to file, against which project, with what severity, and how to frame.**
+
+Why sub-agents lack the context to file correctly:
+- They don't know what's already been filed and what disposition it received.
+- They don't know the agentic-by-design rule, the dogfood principle, or the cross-project routing logic.
+- They don't carry the current suite ledger (which tests are draft / blocked / signed).
+- They can't cross-reference a similar finding that was dismissed in a prior session.
+
+A sub-agent that files creates rubber-stamp noise: duplicates of existing issues, premature platform asks, single-test pain points reported as cluster bugs, customer-app-side asks when st4ck-side is the correct routing (or vice versa).
+
+**How to apply when dispatching a sub-agent (boilerplate for every sub-agent spawn):**
+
+> "Report findings to me with evidence (execution_id, structured_log excerpts, selector strings, primitive-call response envelopes). Do NOT call `create_dev_task`, `open_issue`, or any ticket-creation tool. I will decide what to file, where, with what severity, and how to frame."
+
+If your prompt template includes this line, the sub-agent follows it. Soft-enforcement via methodology + prompt boilerplate is enough in practice; hard-enforcement (gating the tool by caller role) is a separate decision and not required.
+
+The orchestrator's filing-decision steps:
+1. Compare the finding to existing open / acknowledged / dismissed issues. If a match exists, append to that thread or `update_issue_status` with new evidence; do NOT file a new issue.
+2. Determine routing: st4ck (platform bug / primitive gap / methodology refinement) vs customer-app (app behavior, app state, app design). The dogfood principle pushes toward customer-app-fixes by default UNLESS the underlying mechanism generalizes.
+3. Pick severity by the agentic-by-design rule: a 3-test cluster in one project with no second-customer evidence is medium-or-below; cross-project recurrence + concrete failure mode is high or critical.
+4. Frame the issue with the finding + the verification steps (per Rule 1 above) + the proposed disposition options.
+
 ## Loop
 
 ```

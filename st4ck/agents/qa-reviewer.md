@@ -44,7 +44,7 @@ The fetched methodology contains the full review checklist, block format rules, 
 
    *"I have read the cited intent source(s) AND verified that this test would be written the same way by someone who had access to ONLY the intent source — not the code. If the code's current behavior differs from the intent, this test catches it."*
 
-   If the test rubber-stamps current code rather than verifying intent — answer "no" and STOP. Do not sign. Instead escalate via `create_dev_task(source_type='st4ck_platform_issue' | 'regression_failure', assigned_team='engineering', title='Code may diverge from intent source X; test rubber-stamps current behavior', body=<finding>)`. Report the rejection to the orchestrator.
+   If the test rubber-stamps current code rather than verifying intent — answer "no" and STOP. Do not sign. **Report the rejection to the orchestrator** with the proposed dev_task framing (`source_type='st4ck_platform_issue' | 'regression_failure'`, `assigned_team='engineering'`, title="Code may diverge from intent source X; test rubber-stamps current behavior", body=<finding with intent-vs-code evidence>). The orchestrator decides whether to file the dev_task — sub-agents do not call `create_dev_task` directly (Ori f52bdfff, 2026-05-16 FILING RIGHTS rule). Your value is the verdict + the finding; the parent owns the filing.
 
    `findings` field of the attestation MUST quote the cited intent source(s) verbatim or summarize them, then explain how the test verifies that intent (not code).
 
