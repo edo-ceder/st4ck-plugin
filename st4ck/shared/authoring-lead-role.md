@@ -105,7 +105,11 @@ The sub-agent's verdict "blocked" does NOT mean "the runner's primitive surface 
 2. Either (a) pick it up in main-context and probe the remaining surface yourself, or (b) spawn a tightly-scoped probe sub-agent with a specific list of untried experiments (NOT another generic retry).
 3. Only after exhaustion of the primitive surface should the verdict become a platform-issue filing or an agentic-by-design defer.
 
-This extends the "stuck-sub-agent recovery — try orchestrator-inline diagnosis FIRST" pattern above. The inline-diagnosis-first rule says "read the artifacts before re-dispatching." This rule says "exercise the primitive surface before filing the platform issue."
+**Auto-step for the "click runs but workflow no-ops" symptom (Ori 643ca02e, 2026-05-17):** if a sub-agent reports a click that returns `body_changed:false` AND `dom_event_listeners` shows listeners on the target AND no popup/dialog/error appears, the NEXT step is to **READ THE SOURCE meta for the trigger element BEFORE escalating to another click variant or a platform-primitive proposal**. For Bubble apps specifically, check `Button Disabled:` + `Conditional States` in the element's `_index.md`. Reading the source costs ~3 minutes and reverses verdicts that would otherwise burn 5+ days of platform-investigation work.
+
+Ori K3 (2026-05-17) was the worked example: 371K tokens of sub-agent retries reached the wrong verdict (filed as st4ck `06f41145` "Bubble runtime / session-state precondition", framing wrong). ~3 minutes of source-read revealed the actual cause was a standard Bubble app-authoring pattern (`Button Disabled: yes` + Conditional State enabling only when `daily_inventory.status ≠ ____0`). The earlier seed setup didn't persist the daily_inventory record, so the conditional evaluated false, so the workflow short-circuited inside the handler — no platform fix needed. Supersession filed as `643ca02e`.
+
+This extends the "stuck-sub-agent recovery — try orchestrator-inline diagnosis FIRST" pattern above. The inline-diagnosis-first rule says "read the artifacts before re-dispatching." The Rule 1 above says "exercise the primitive surface before filing the platform issue." This auto-step says: **for the click-no-op symptom specifically, READ SOURCE before both.**
 
 ### Sub-agents do NOT file dev_tasks or st4ck issues (Ori f52bdfff, 2026-05-16) — FILING RIGHTS
 
