@@ -135,6 +135,33 @@ The orchestrator's filing-decision steps:
 3. Pick severity by the agentic-by-design rule: a 3-test cluster in one project with no second-customer evidence is medium-or-below; cross-project recurrence + concrete failure mode is high or critical.
 4. Frame the issue with the finding + the verification steps (per Rule 1 above) + the proposed disposition options.
 
+### Liveness check after spawning long-running work (Ori 51026d72, 2026-05-17) — Rule 3
+
+When you launch anything you can't observe directly — a sub-agent via Agent tool with `run_in_background:true`, a long-running runner via `Bash run_in_background:true`, a CI check, a remote-queue wait — **"alive" is not the same as "progressing."** A truncated sub-agent, a runner blocked on IPC with no driver attached, a queue worker stuck on the previous job — all look identical to a default "still running" check. Without a proactive liveness pattern, you sit idle for minutes-to-hours assuming progress, and only learn of the stall when the user pings or the work times out.
+
+**Worked example (Ori K3 retry, 2026-05-17):** orchestrator used `Bash run_in_background:true npx st4ck run <test-id> <base-url>` and announced "K3 running in background, will be notified on completion." The runner stayed alive (PIDs 6253/6283/6306) but sat idle for 10 minutes waiting for IPC commands — because `npx st4ck run` doesn't auto-attach a driver for agentic tests; it expects the caller to drive each agentic block via `st4ck browse <op> -s <session>`. Orchestrator only discovered the stall when the user said "not sure anything's happening." Output file was 0 bytes. 10 minutes of orchestrator + user attention wasted.
+
+**How to apply, three steps:**
+
+1. **Record what "progress evidence" looks like for the workload BEFORE spawning.** Concrete examples:
+   - `qa-runner` sub-agent → at least one tool-call event every N minutes; final verdict envelope by N+M.
+   - `npx st4ck run` deterministic test → `recording.md` written within ~10s of start; structured_log row inserted within ~30s.
+   - `npx st4ck run` agentic test → first `agentic_pause` envelope on stdout within ~30s; orchestrator must be the driver responding via `st4ck browse <op>` against the paused `session_name`.
+   - CI check → first status update visible at the CI URL within N minutes.
+
+2. **Set a self-check at the expected first-evidence threshold.** Use `ScheduleWakeup` (Claude Code) or an equivalent scheduling primitive. **Do NOT rely on the user to ping.** Check should be cheap (read file size, query structured_log, fetch CI status) and fast (under 5s wall).
+
+3. **On wake-up, verify the progress evidence is present:**
+   - Present → schedule the next check at the next-expected-evidence threshold OR mark complete.
+   - Absent → intervene. Stalled runner: kill + restart with correct invocation, or pick up in main-context. Truncated sub-agent: Ori 62a7a97f cleanup recipe + re-dispatch with tighter scope. Stuck CI check: surface to user with the evidence-gap, don't quietly continue waiting.
+
+**Tool-pattern guidance specific to st4ck:**
+
+- **Agentic tests** (any test with `block_mode: "agentic"` blocks): prefer the `qa-runner` sub-agent (which has its own driver loop) over `Bash run_in_background:true npx st4ck run`. Bare-background-run WILL stall on the first agentic block because no driver is attached.
+- **Scripted tests**: bare-background-run is fine, but still set a liveness check — the runner can stall on Playwright auto-wait timeouts or selector failures without that being visible until the 30s primitive timeout fires N times.
+
+The pattern generalizes beyond st4ck. **Any time you're about to type "running in background, will be notified" — the next action should be to schedule the liveness check, not to start the next piece of work.**
+
 ## Loop
 
 ```
