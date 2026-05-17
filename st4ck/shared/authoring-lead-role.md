@@ -115,6 +115,19 @@ Ori K3 (2026-05-17) was the worked example: 371K tokens of sub-agent retries rea
 
 This extends the "stuck-sub-agent recovery — try orchestrator-inline diagnosis FIRST" pattern above. The inline-diagnosis-first rule says "read the artifacts before re-dispatching." The Rule 1 above says "exercise the primitive surface before filing the platform issue." This auto-step says: **for the click-no-op symptom specifically, READ SOURCE before both.**
 
+**Structural-gate ladder (Ori d44746db, 2026-05-17)** — when steps 1+2 above suggest the gate IS the Button-Disabled-with-Conditional-State pattern AND you're about to propose a platform primitive, run this 4-step ladder FIRST to confirm the gate is structurally below user-script reach (in which case no platform primitive helps either). Reproducible in <60 seconds via a single `evaluate` per step:
+
+  A. **Inline cursor** — `getComputedStyle(el).cursor === "default"` → visually gated.
+  B. **Data scope** — `inst._states.group_data.call(inst)` (where `inst` is the bubble_instance reachable via `el._bubble_node` or similar). If `null`, the data scope is missing.
+  C. **Direct handler invocation** — extract `$._data(el, "events").click[0].handler` and call with `$.Event("click", {target: el, bubbles: true})`. Handler executes cleanly with no exception, no popup → the gate is INSIDE `run_element_workflow`, not in the click delivery path.
+  D. **Full press sequence** — fire mousedown handler, verify `inst._states.is_pressed.call(inst) === true`, then fire click handler. If still no popup → gate is in Bubble's compiled runtime bundle, structurally below user-script reach.
+
+**If you reach D with no popup**: the test is structurally un-authorable from QA's primitive surface. Do NOT propose `bubble_workflow_trigger` — even if it called `run_element_workflow` directly via Bubble's internal registry, the gate is INSIDE that function. Right disposition is `82de02b4`: file a dev_task asking the app team for a deterministic admin trigger that bypasses the disabled gate, OR retire the test as manual-only QA.
+
+**If ANY step changes outcome** (cursor flips, group_data populates, direct invocation opens the popup): primitive-surface still has room. Continue normal escalation.
+
+Ori K3 worked example (probe9, 2026-05-17): all 7 probes (CDP isTrusted, pointer-sequence hold_ms:80, force-strip inline cursor, jQuery .trigger("click"), dblclick+keyboard, direct handler call, full press sequence) reached the gate but yielded no popup. `button_disabled` is NOT on `inst._states`. `group_data()` returned an opaque proxy with no introspection surface. Decisive evidence that the class is structurally inaccessible from user JS.
+
 ### Sub-agents do NOT file dev_tasks or st4ck issues (Ori f52bdfff, 2026-05-16) — FILING RIGHTS
 
 **Sub-agents (qa-author, qa-reviewer, qa-runner, code-explorer, etc.) MUST NOT call `create_dev_task`, `open_issue`, or any ticket-creation tool. Sub-agents report findings with evidence back to the orchestrator. The orchestrator decides whether to file, against which project, with what severity, and how to frame.**
