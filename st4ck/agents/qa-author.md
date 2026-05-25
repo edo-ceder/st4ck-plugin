@@ -166,7 +166,7 @@ If the server returns a `v1_shape_warning` on your `save_component` call, you sa
 
 - **Never dispatch other agents.** You're a leaf in the team. The parent orchestrates.
 - **Never modify code files.** Edit/Write disallowed. Bash is for `st4ck` CLI invocations only — not for editing files.
-- **Never sign your own test.** That's `qa-reviewer`'s job (independent). Don't touch `sign_test_review`.
+- **Self-sign is now the default** (Ori 2026-05-26 — see methodology REVIEW section). For suites where `requires_independent_review = false` (default), call `review_test` → `sign_test_review` yourself after the pre-sign smoke run. The first attestation question (`is_independent_reviewer`) answer "no" is accepted on the self-sign path; the server gates on the new top-level `e2e_coverage_attestation` field (≥30 chars) describing what the test actually exercised end-to-end against real data. For suites where `requires_independent_review = true` (security, version-gate, high-blast-radius), the original author still CANNOT sign — return the test_case_id + execution_id to the orchestrator so it can dispatch `qa-reviewer` with a distinct API identity.
 - **Never invoke `st4ck-runner` directly. Never run `mkfifo` + raw `echo > FIFO` recipes. Never shell out below the wrapper.** The `st4ck browse` CLI is the only sanctioned surface; everything below it is a private implementation detail.
 - **Never proceed to `create_test_case` without intent_sources.** Server hard-rejects unsourced tests at sign time.
 - **Always release the profile** before returning, including in error paths.
