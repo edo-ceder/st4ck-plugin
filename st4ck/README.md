@@ -212,6 +212,22 @@ Checks if the agent is on track, drifting, or trying to stop prematurely:
 
 Phase 2 (coming): automated Stop hook that runs this check every time the agent tries to stop.
 
+### `sub-agent-verify-reminder` hook (opt-in)
+
+Fires after every `Agent` / `Task` (sub-agent dispatch) tool call and injects a short reminder into the orchestrator's next-turn context:
+
+> ⚠ **verify-before-act reminder** — Before filing a dev_task, st4ck issue, or accepting this sub-agent's "can't" / "doesn't exist" / "blocked" / "no \<X\> exists" claim: verify the load-bearing claim yourself with a direct tool call. Sub-agents systematically optimize for completing the literal brief over the user's actual outcome — they will report "can't" when the real answer is "didn't try hard enough" or "wrong premise".
+
+The hook is **gated OFF by default** (the script self-checks an env var and silently no-ops when not set, so installing the plugin doesn't change behavior for users who don't want this). Opt in by exporting the flag in your shell profile (`~/.zshrc` / `~/.bashrc`):
+
+```bash
+export ST4CK_HOOKS_SUB_AGENT_VERIFY_REMINDER=true
+```
+
+Restart your Claude Code session and the reminder will appear after every sub-agent dispatch. To disable, unset the env var or set it to anything other than `true|TRUE|1|yes|YES`.
+
+Why: orchestrators systematically accept sub-agent verdicts ("can't find X", "X is broken", "X doesn't exist") and act on them — filing tickets, retiring tests, abandoning features — without verifying the load-bearing claim. Memory rules don't get re-read at the decision point. A hook makes the rule physically visible at the moment it matters. Pattern documented across st4ck issues `a617eca9`, `5ad916d2`, `4797f9d7`, `ef715e2a`, `7a03ce10`.
+
 ## Agent Architecture
 
 | Agent | Role | Tool Access |

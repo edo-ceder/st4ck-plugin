@@ -11,6 +11,18 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Task",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/sub-agent-verify-reminder.sh\"",
+            "timeout": 5
+          }
+        ]
+      }
     ]
   }
 }
