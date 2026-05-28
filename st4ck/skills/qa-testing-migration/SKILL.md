@@ -5,154 +5,115 @@ description: Migrate legacy tests to the v2 component format. Triggers on "migra
 
 # QA Testing — Migration
 
-**You — the current session agent — are the authoring lead.** Read the lead role-doc below; that's your orchestration playbook. Migration is just a different intent for the same orchestration shape — drive the candidate-component discovery, dispatch `qa-author` teammates, sweep promotions, sign, run.
+**You — the current session agent — are the authoring lead.** Replaces three earlier skills (router + Path A + Path B); collapsed 2026-04-26 — every dispatch boundary loses context.
 
 @${CLAUDE_PLUGIN_ROOT}/shared/authoring-lead-role.md
 
-This skill replaces three earlier skills (router + Path A + Path B); collapsed 2026-04-26 because every dispatch boundary is a place agents lose context.
-
-> **2026-05-02 surface notes (Plenty token-cost ship)** — affect every component you author through this skill:
-> - **`save_and_sign(name, method, eval_sequence, ..., linked_execution_id)`** — composed verb. Use after a passing run to skip the `save_component → review_component → sign_component_review` three-call dance for self-reviewed flows. Idempotent on `(content_hash, linked_execution_id, signed)`. ~2× faster end-to-end.
-> - **`validate_component(name, method, eval_sequence)`** — dry-run validator. Lints SELECTOR_QUALITY_RULE + primitive shape WITHOUT writing. Use before `save_component` to catch v1-shape leftovers and unqualified selectors without paying a save round-trip.
-> - **OK/NF contract is now server-enforced** — `evaluate` primitives that return a string starting with `"nf:"` fail the action with `error.class="check_failed"` (runner alpha.13+, 2026-05-02). Components must author asserts as `return <verified> ? 'ok: <state proof>' : 'nf: <reason>'`. See KB `9430ae8a` (updated) and KB `04e3cc28` (the legacy false-green class this closes at the new runner's evaluate boundary).
-> - **`wait_until kind: "js"` is now an alias for `kind: "custom"`** (runner alpha.12+) — no more day-one `primitive_not_implemented` walls when migrating KB-cited shapes literally.
-> - **Sign-gate tolerates non-critical block failures** — `linked_execution_id` against an `exec.status === "failed"` execution now accepts when every critical block + the exercising block passed. Common case: backend SQL block skipped because backend executors aren't wired up. See KB `1dc73359`.
-> - **Slim response shapes** on save / review / sign — full echoed component is gone. Recover via `get_component(name, method)` if you need the full payload.
+> **2026-05-02 surface notes (Plenty ship):** `save_and_sign(..., linked_execution_id)` — composed verb; ~2× faster, idempotent on `(content_hash, linked_execution_id, signed)`. `validate_component(...)` — dry-run lint without writing. **OK/NF contract server-enforced** — `evaluate` returning `"nf:..."` fails with `error.class="check_failed"` (alpha.13+); assert `return <verified> ? 'ok: <state proof>' : 'nf: <reason>'`. KB `9430ae8a` + `04e3cc28`. `wait_until kind: "js"` aliases `"custom"` (alpha.12+). Sign-gate tolerates non-critical block failures — accepts `exec.status === "failed"` when every critical + exercising block passed. KB `1dc73359`. Slim responses on save/review/sign — use `get_component(name, method)` for full payload.
 
 ## Two internal branches
 
-Migration is a single decision tree. Per test, you classify the shape and run the right branch inline.
-
-| Shape | Branch | Cost target | What happens |
+| Shape | Branch | Cost | What happens |
 |---|---|---|---|
-| **agentic** | Agentic re-author | ~10k tokens/test | qa-author drives the journey from scratch using primitives; saves new components + new test_case; old test atomically swapped at the end |
-| **components_v1** (clean, code-backed platform) | Component upgrade | ~2k tokens/component | mechanical `eval_sequence`→`sequence` translation via `primitive_registry`; fresh snapshot per component; targeted citation gathering; test_case `scenario_blocks` usually unchanged |
-| **components_v1** (`likely_demotes_to_path_a: true`) | Agentic re-author | ~10k tokens/test | classifier emitted `path_b_blockers[]` — Bubble eval workarounds, branch pseudo-step, race/iteration history. Mechanical translation will lose the workarounds; route directly to Path A and skip the demotion thrash |
-| **components_v1** (closed-loop platform: Bubble/Retool/Webflow/n8n/etc.) | Agentic re-author | ~10k tokens/test | **Blanket Path A.** Closed-loop platforms require fresh runner drives for every component to capture platform_artifacts (editor_url + screenshot + element_id). Mechanical translation cannot produce these — it has no browser session. Route ALL components_v1 tests on closed-loop platforms to Path A regardless of path_b_blockers. This is a scope carve-out, not a plan redesign: §13.2's two-branch split remains valid for code-backed platforms (React, Next.js, Angular, etc.) where file:line citations and snapshot excerpts can be gathered without a live drive. |
-| **components_v2** | Skip | 0 | already migrated; defensive case |
-| **mixed** | Agentic re-author | ~10k tokens/test | LLM has to disentangle; treat as agentic |
-| **empty** | Skip | 0 | flag the test as broken |
+| **agentic** | A — re-author | ~10k/test | qa-author drives from scratch; saves new components + new test_case; atomic swap |
+| **components_v1** (clean code-backed) | B — component upgrade | ~2k/component | mechanical `eval_sequence`→`sequence` via `primitive_registry`; fresh snapshot; `scenario_blocks` usually unchanged |
+| **components_v1** (`likely_demotes_to_path_a: true`) | A | ~10k/test | classifier surfaced `path_b_blockers[]`; mechanical translation would lose them |
+| **components_v1** (closed-loop: Bubble/Retool/Webflow/n8n) | A | ~10k/test | **Blanket A.** Closed-loop needs fresh drives to capture `platform_artifacts`; B has no browser session |
+| **components_v2** | Skip | 0 | already migrated |
+| **mixed** | A | ~10k/test | LLM disentangles |
+| **empty** | Skip | 0 | flag broken |
 
-**Path-B-blocker pre-routing (Phase 6.0).** The `classify_test_migration_shape` response now includes per-test `path_b_blockers: string[]` plus a convenience `likely_demotes_to_path_a: boolean`. Route any `components_v1` test where `likely_demotes_to_path_a === true` to Branch A (agentic re-author) immediately — do NOT attempt the component-upgrade branch on it. The classifier sees: v1 `{type:"branch"}` pseudo-steps, MouseEvent/dispatchEvent eval workarounds, atomic-select patterns, KB-workaround references in description, race/iteration history in change_log. Surface `path_b_blockers[]` to the user in the budget approval message so they can see WHY a v1 test is being routed Path A.
+**Path-B-blocker pre-routing (§6.0).** `classify_test_migration_shape` returns `path_b_blockers: string[]` + `likely_demotes_to_path_a: boolean`. Route `components_v1` with `likely_demotes_to_path_a === true` to A immediately. Surface `path_b_blockers[]` in budget approval.
 
-**Per-component escalation between branches.** Even within the clean `components_v1` slice, individual components can hit cases the mechanical translator can't handle (exotic eval, persisted snapshot ref, unreachable component, TRIAD-rejection). Those components escalate to the agentic re-author flow inline — only that component re-authors, the rest of the test's components keep their mechanical path. Recovery is per-component, not per-test.
+**Per-component escalation.** Within `components_v1`, individual components hitting cases B can't handle (exotic eval, persisted snapshot ref, unreachable, TRIAD-rejection) escalate to A inline — only that component re-authors.
 
-## First actions — mandatory in this order
+## First actions — MANDATORY in order
 
-1. **`get_qa_methodology(section: "process")`** — orchestration rules.
-2. **`get_qa_methodology(section: "component_authoring")`** — the canonical 5-rule + drive-and-decompose workflow + TRIAD + size envelope. Both branches need this.
-3. **Classify the scope.** `classify_test_migration_shape({suite_id})` (or `{test_id}` for a single test, or `{scope: "project"}` for the whole project). Returns per-test shape + aggregate counts + estimated token budget.
-4. **Probe Agent Teams availability** (per the lead role-doc). Pick mode for the WHOLE migration — Team or sub-agent.
-5. **Show the user the classification + budget** — *"Suite has X agentic, Y components_v1, Z components_v2, W mixed, V empty. Estimated budget: ~$N. Proceed?"* — wait for human approval before fanning out.
+1. `get_qa_methodology(section: "process")` — orchestration rules.
+2. `get_qa_methodology(section: "component_authoring")` — 5-rule + drive-and-decompose + TRIAD + size envelope.
+3. `classify_test_migration_shape({suite_id})` (or `{test_id}` / `{scope: "project"}`).
+4. Probe Agent Teams (per lead role-doc). Pick mode for the WHOLE migration.
+5. **Show user classification + budget; WAIT for approval.**
 
-## Step 5.5 — Optional pre-seed (when N>20 legacy tests)
+## Step 5.5 — Optional pre-seed (N > 20 legacy tests)
 
-If the project has many legacy tests AND the candidate-component list (from `get_component_discovery`) shows clear repeated patterns: dispatch a small batch of `qa-author` teammates with a **library-only brief** (drive the candidate flows, save_component, no test composition). The library is then warm before per-test migration runs — speeds up both branches.
+If many legacy AND `get_component_discovery` shows repeated patterns: dispatch a small `qa-author` batch with a **library-only brief** (drive candidates, `save_component`, no test composition). **Precedence:** if §5.6 applies, run §5.6 FIRST and SKIP §5.5.
 
-**Precedence over §5.6.** If §5.6 (mandatory bootstrap) applies — i.e. `summary_meta.is_fresh_project === true` — run §5.6 FIRST and SKIP §5.5. The bootstrap component authored in §5.6 already serves as the project's reference idiom, and a fresh-project state means there are no candidate-component patterns to pre-seed against yet. Once §5.6 completes, you can run a smaller §5.5-style pre-seed mid-sweep if patterns emerge from the first batch of migrated tests.
+## Step 5.6 — MANDATORY bootstrap when project has zero v2 components (§6.1)
 
-This used to be a separate `/st4ck:bootstrap-components` skill; folded in here 2026-04-26 because "how to author a component" is one methodology section anyone can pull on demand, and pre-seeding is just a different invocation context for `qa-author`.
+Before dispatching ANY per-test migration, ensure ≥1 signed v2 component anchors agent dispatches. Without a reference, each `qa-author` invents conventions — especially costly on no-code.
 
-## Step 5.6 — Mandatory bootstrap when project has zero v2 components (Phase 6.1)
+**Detection:** `get_components({summary: true})` → read `summary_meta.is_fresh_project: boolean` directly. **DO NOT re-derive from `step_count`** (kept for back-compat as v1 `eval_sequence` length — non-zero on every legacy component, would falsely suggest v2 coverage).
 
-Before dispatching ANY per-test migration, check whether the project has at least one signed v2 component to anchor agent dispatches against. Without a reference, every dispatched `qa-author` invents its own conventions — particularly costly on no-code platforms (Bubble, Retool) where idiomatic patterns aren't obvious from the page DOM.
+**When fresh-project:**
 
-**Detection:** call `get_components({summary: true})`. The response carries `summary_meta.is_fresh_project: boolean` — that flag is the canonical signal and is computed server-side as "zero components where `is_v2 === true && signed === true`". Read it directly; do NOT re-derive from the per-component `step_count` (kept for back-compat as the v1 `eval_sequence` length, which is non-zero on every legacy component and would falsely suggest the project has v2 coverage when it has none).
+1. Pick simplest non-trivial flow (typically login, or next-simplest with verifiable post-state).
+2. Dispatch one `qa-author` with bootstrap brief: "Author ONE component for `<flow_name>`. Project reference idiom. Conservative selectors, exhaustive TRIAD, stop after one." For closed-loop, instruct `platform_native: true` + populate `platform_artifacts`.
+3. Dispatch fresh `qa-reviewer` with bootstrap-review brief.
+4. **On approval** — capture UUID. Inject into every subsequent dispatch: "**Reference idiom for this project:** `<name>.<method>` (UUID `<id>`). Match locator shape, TRIAD shape, parameter naming, platform_native handling. Deviate only with rationale."
+5. **On rejection** — surface to user; do NOT proceed.
 
-**Action when fresh-project state is detected:**
+**Platform-native attestation.** Closed-loop bootstrap reviewer MUST include one of `editor_url_inspected`, `screenshot_verified`, `element_id_matched`, `platform_artifacts_reviewed` in `checked_items`, OR a `notes` field quoting the literal `editor_url`. Generic notes rejected per §6.1.
 
-1. **Pick the simplest non-trivial flow** — typically project login. If login is trivial (one click, no MFA), pick the next simplest flow with a verifiable post-state (e.g., dashboard load + visible identity element, settings open, profile name read).
-2. **Dispatch one `qa-author` teammate** with a *bootstrap brief*:
-   - "Author ONE component for `<flow_name>`. This is the project's reference idiom — every subsequent migration agent will be pointed at it. Be conservative on selectors, exhaustive on TRIAD evidence, and stop after one component is saved."
-   - For closed-loop platforms (Bubble/Retool/Webflow/n8n/etc.), instruct the author to set `platform_native: true` + populate `platform_artifacts` ({platform, editor_url, element_id, screenshot_path}) on `save_component` instead of attempting file:line citations.
-   - Pass the canonical primitive list (fetch via `get_qa_methodology(section: "component_authoring")`).
-3. **Dispatch a fresh `qa-reviewer`** with a bootstrap-review brief: "Sign or fail this single component. It will be the project's canonical reference; reviewer rigor must hold."
-4. **On approval** — capture the component UUID. Inject into every subsequent dispatch brief:
-   - Append: "**Reference idiom for this project:** `<component_name>.<method>` (UUID `<id>`). Match its conventions for locator shape, TRIAD shape, parameter naming, and platform_native handling. Deviate only with stated rationale."
-5. **On rejection** — surface the reviewer's findings to the user; do NOT proceed with per-test migration. The first component must be signed before the orchestrator dispatches the wider sweep.
+## Branch A — Agentic re-author
 
-**Why this is mandatory, not optional:** without a reference, the first 3-5 migrated components produce inconsistent conventions; later components inherit drift; reviewer load triples chasing inconsistencies. One signed reference upfront amortizes across the whole sweep.
+1. Derive `intent_sources` — test metadata + linked PRD/spec/dev_task; else `{source_type:'free_text', source_text: <inferred>}`.
+2. Component discovery (if not done §5.5): `get_component_discovery({intent_sources, module})`.
+3. Pre-acquire profile + storageState for the batch.
+3a. **Pre-fetch project context for the dispatch brief** (Ori e757fc2f, 2026-05-14). Call ONCE, inject into every qa-author: `get_qa_methodology(section: "component_authoring")` → key + expires_at; `get_test_environments()` → qa_notes; `get_components({summary: true})` → slim catalog. Re-fetching at startup over-bills by ~50KB per spawn.
+4. Dispatch one `qa-author` per legacy test (parallel; up to 5). Pass each: legacy `scenario_blocks` verbatim, `intent_sources`, candidate list, library, `profile_id` + storageState, pre-fetched context.
+5. Verdict recovery mode-aware (Team → `SendMessage`; sub-agent → re-dispatch fresh).
+6. Promotion sweep across just-authored test_cases.
+7. Dispatch fresh `qa-reviewer` per test.
+8. **Atomic swap** — update OLD test_case row to new `scenario_blocks` + new `journey_signature` + new `linked_execution_id`; clear `legacy_signature`. Status stays `signed`. Per §13.4: **DO NOT delete old until new is signed AND has a passing execution.**
+9. Dispatch `qa-runner` against target environment.
 
-**When to skip:** `summary_meta.is_fresh_project === false` (the project already has ≥1 signed v2 component). The skip condition is read directly from the summary_meta flag — do not compute it from `step_count` (v1 length, kept for back-compat).
+## Branch B — Component upgrade
 
-**Updating §4 attestation for platform-native bootstrap.** If the bootstrap component is closed-loop (Bubble/Retool/etc.), the qa-reviewer dispatch brief MUST include the canonical evidence-attestation tokens the server now requires for `verdict: "approved"`: one of `editor_url_inspected`, `screenshot_verified`, `element_id_matched`, `platform_artifacts_reviewed` in `checked_items`, OR a `notes` field that quotes the literal `editor_url` (or its hostname). Generic notes will be rejected by `sign_component_review` per Phase 6.1.
+Mostly mechanical; many steps run inline.
 
-## Branch A — Agentic re-author (Shape-A or mixed)
+**Per-component** (once per unique component):
 
-Same orchestration shape as `/st4ck:regression-author`:
+1. Idempotency: `component.sequence IS NOT NULL` → skip.
+2. Translate `eval_sequence` → `sequence` via `primitive_registry` (lookup `current_name` or `deprecated_names` → stable `primitive_code`). Emit `{primitive_code: "p.X", ...rest}`. Preserve locator. No equivalent → **escalate to A**.
+3. Ref-rejection: scan `sequence` for `ref: "eN"` → **escalate to A** (needs re-snapshot).
+4. Capture fresh `snapshot_excerpt` — `browse launch <url>` → `browse snapshot` → `browse close`. Unreachable in isolation → **escalate to A**.
+5. `source_citations` — read each `legacy_text` file path at current `git_sha` → `{path, line, git_sha, note}`. No paths cited → dispatch small `qa-author` with "citation-gathering brief" (~1–2 LLM calls).
+6. `search_test_knowledge({query: <name> + <app-framework>})` → attach hit IDs to `kb_entries`. No hits → sentinel `["searched, nothing matched"]`.
+7. Save as v+1 — `save_component` with `sequence`, full TRIAD, `recording_metadata.recorded_via='v1_upgrade'`, old version `deprecated_versions`.
+8. Server-side TRIAD validation at save. Rejected → escalate THAT component to A.
 
-1. **Derive `intent_sources`** — read test metadata (name, description, suite), linked PRD nodes / specs / dev_tasks if present, else populate `{source_type:'free_text', source_text: <inferred from description + action list>}`.
-2. **Component discovery (if not already done in Step 5.5).** `get_component_discovery({intent_sources, module})`.
-3. **Pre-acquire profile + capture storageState** for the batch.
-3a. **Pre-fetch project context for the dispatch brief** (Ori e757fc2f, 2026-05-14). Call ONCE before dispatch and inject into every qa-author brief:
-   - `get_qa_methodology(section: "component_authoring")` → key + expires_at
-   - `get_test_environments()` → qa_notes
-   - `get_components({summary: true})` → slim catalog (server-cached 5min — call is cheap, but capture data once so teammates don't re-call)
-   Sub-agents that re-fetch this context at startup over-bill the orchestration by ~50KB per spawn. Pass it in the prompt instead.
-4. **Dispatch one `qa-author`** per legacy test (parallel via multiple `Agent` calls; up to 5 concurrent). Pass each: the legacy test's full `scenario_blocks` (verbatim, as the journey description), `intent_sources`, candidate-component list, existing component library, `profile_id` + storageState path, AND the pre-fetched context from step 3a.
-5. **Verdict recovery** mode-aware (Team mode → SendMessage; sub-agent mode → re-dispatch fresh).
-6. **Promotion sweep** across the just-authored test_cases.
-7. **Dispatch fresh `qa-reviewer`** per test for sign.
-8. **Atomic swap** — for each newly signed test, atomically update the OLD test_case row to use the new `scenario_blocks` + new `journey_signature` + new `linked_execution_id`; clear `legacy_signature` flag. Status stays `signed`. Per §13.4 partial-upgrade preservation: do NOT delete the old test until the new one is signed + has a passing execution.
-9. **Dispatch `qa-runner`** for execution against the target environment.
+**Per-test** (after all referenced components upgraded):
 
-## Branch B — Component upgrade (Shape-B)
-
-This branch is mostly mechanical. You don't always need to dispatch `qa-author` teammates — many steps run inline in your context.
-
-**Per-component work** (runs once per unique component referenced by the test, not once per test):
-
-1. **Idempotency check** — if `component.sequence IS NOT NULL` already, skip (v2 upgrade already done).
-2. **Translate `eval_sequence` → `sequence`** via `primitive_registry` lookup:
-   - For each step in `eval_sequence`, look up its action verb in `primitive_registry` (either `current_name` or `deprecated_names`) → get the stable `primitive_code`.
-   - Emit `{primitive_code: "p.X", ...rest_of_step}`. Preserve locator shape (by/value/scope).
-   - If a step has no primitive-code equivalent: **escalate this component to Branch A** (full re-author). Record reason. Continue with the rest of the test's components.
-3. **Server-side ref-rejection check** — scan emitted `sequence` for any `ref: "eN"` fields. If any → **escalate this component to Branch A** (v1 component persisted a snapshot ref; needs re-snapshot via fresh drive).
-4. **Capture fresh `snapshot_excerpt`** — `npx st4ck@latest browse launch <component_target_url> --session migrate-<slug>` (URL recovered from `recording_metadata` if present; else from test's first block) followed by `npx st4ck@latest browse snapshot --session migrate-<slug>` and `npx st4ck@latest browse close --session migrate-<slug>`. If component can't be reached in isolation → **escalate to Branch A**.
-5. **Gather `source_citations`** — for each `selector_notes.legacy_text` mention of a file path, read the cited file at current `git_sha` and produce a structured `{path, line, git_sha, note}` entry. If legacy_text doesn't cite paths (most v1 components don't), dispatch a small `qa-author` teammate with a "citation-gathering brief" (read source + KB search; no driving). ~1-2 LLM calls per component.
-6. **Search `automation_lessons`** — `search_test_knowledge({query: <component-name> + <app-framework>})`. Attach hit IDs to `kb_entries`. If no hits, set sentinel `["searched, nothing matched"]`.
-7. **Save as v+1** — `save_component` with `sequence`, full TRIAD, `recording_metadata.recorded_via='v1_upgrade'`, mark old v as `deprecated_versions`.
-8. **Server-side TRIAD validation** fires at save. If rejected → escalate THAT component to Branch A; rest can still upgrade mechanically.
-
-**Per-test work** (after all referenced components upgraded):
-
-1. **`scenario_blocks` change required?** — usually NO. Block shape `{component, method, params}` doesn't change; only the underlying component's storage format did. If any block had an inline action that gets promoted to a component during upgrade (rare), update that block.
-2. **Derive + attach `intent_sources`** — same logic as Branch A step 1.
-3. **Dispatch `qa-runner`** for smoke run + determinism check.
-4. **Dispatch fresh `qa-reviewer`** for 13-item attestation sign.
-5. **Atomic promote.**
+1. `scenario_blocks` change? Usually NO. Block shape unchanged; only storage format did.
+2. Derive + attach `intent_sources` — same as A.1.
+3. `qa-runner` for smoke + determinism.
+4. Fresh `qa-reviewer` for 13-item attestation sign.
+5. Atomic promote.
 
 ## Order
 
-Run Branch A and Branch B in parallel where the classification has both shapes — they don't share state. Within each branch, tests run in parallel up to the concurrency budget (5 default, 8 with `ST4CK_MAX_CONTEXTS_PER_DAEMON=8`).
+A and B run in parallel where both shapes present. Within each, tests run in parallel up to budget (5 default, 8 with `ST4CK_MAX_CONTEXTS_PER_DAEMON=8`).
 
-## Don't
+## DO NOT
 
-- **Don't skip the classification.** The whole point of branching is matching cost to shape.
-- **Don't override the human gate.** Show the user the budget; wait for approval.
-- **Don't fold both branches into a single qa-author dispatch.** Branch B's mechanical translation is much cheaper than re-authoring; Branch A on Shape-B duplicates work the legacy author already did.
-- **Don't run Branch A on a Shape-B test "because it's safer."** It's not safer — it's more expensive and more brittle.
-- **Don't delete the legacy test** until the new test is signed + green. Per §13.4 partial-upgrade preservation.
+- DO NOT skip classification.
+- DO NOT override the human gate.
+- DO NOT fold both branches into one dispatch.
+- DO NOT run A on a Shape-B test "to be safe" — more expensive AND more brittle.
+- DO NOT delete legacy until new is signed + green (§13.4).
 
-## Return to the user
-
-A summary table:
+## Return
 
 ```
 Migration: <suite-name or scope>
   Branch A re-authors: M signed / N total
   Branch B upgrades:   K signed / L total
   Component escalations B → A: D
-  Skipped (already v2):  S
-  Skipped (empty):       E
-  Estimated total spend: $X
-  Actual spend:          $Y
+  Skipped v2:S empty:E
+  Estimated $X / Actual $Y
 ```
 
-Plus: per-test verdict with link to the test in the st4ck UI.
-
 ---
-
-## Dispatch contracts
 
 @${CLAUDE_PLUGIN_ROOT}/shared/qa-dispatch-contracts.md

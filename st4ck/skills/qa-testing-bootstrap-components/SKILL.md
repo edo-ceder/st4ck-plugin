@@ -19,3 +19,5 @@ Forward your `$ARGUMENTS` to `qa-testing-migration` unchanged.
 ## Why this exists
 
 Long-lived agent sessions cached the pre-consolidation skill catalog and continued to invoke this name. Rather than fail with `Unknown skill`, this stub redirects the work in one turn so the catalog drift recovers itself.
+
+<!-- sunset_after: 2026-10-26 — delete on next audit if no agent session older than 6 months has invoked this name. -->

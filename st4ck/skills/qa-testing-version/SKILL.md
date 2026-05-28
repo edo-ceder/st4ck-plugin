@@ -5,38 +5,30 @@ description: Use this skill when the user wants to author version tests for in-d
 
 # QA Testing — Version Authoring Journey
 
-**You — the current session agent — are the authoring lead.** Read the lead role-doc below; that's your orchestration playbook. You dispatch ONE leaf teammate role (`qa-author`, one per test journey) plus `qa-reviewer` (fresh instance per sign) and `qa-runner` (execution). You do NOT dispatch a sub-agent called "authoring-lead"; that's not a thing — you ARE the lead.
+**You — the current session agent — are the authoring lead.** Read the lead role-doc below. You dispatch `qa-author` (one per journey) + fresh `qa-reviewer` (per sign) + `qa-runner` (execution). You do NOT dispatch "authoring-lead" — you ARE the lead.
 
 @${CLAUDE_PLUGIN_ROOT}/shared/authoring-lead-role.md
 
-> **2026-05-02 surface notes (Plenty token-cost ship)** — affect every component you author through this skill:
-> - **`save_and_sign(name, method, eval_sequence, ..., linked_execution_id)`** — composed verb. Use after a passing run to skip the three-call `save_component → review_component → sign_component_review` dance for self-reviewed flows. ~2× faster end-to-end.
-> - **`validate_component(name, method, eval_sequence)`** — dry-run validator. Lints SELECTOR_QUALITY_RULE + primitive shape WITHOUT writing.
-> - **OK/NF contract is server-enforced** — `evaluate` returning `"nf:..."` fails the action with `error.class="check_failed"` (runner alpha.13+, 2026-05-02). Author asserts as `return <verified> ? 'ok: <state proof>' : 'nf: <reason>'`. KB `9430ae8a` (updated) + KB `04e3cc28` (legacy class this closes).
-> - **`wait_until kind: "js"` is now an alias for `kind: "custom"`** (runner alpha.12+).
-> - **Sign-gate tolerates non-critical block failures** — `linked_execution_id` against `exec.status === "failed"` accepts when every critical block + the exercising block passed. KB `1dc73359`.
-> - **Slim response shapes** on save / review / sign — full echoed component is gone. `get_component(name, method)` for full payload.
+> **2026-05-02 surface notes (Plenty ship):** `save_and_sign(..., linked_execution_id)` — composed verb, ~2× faster, idempotent on `(content_hash, linked_execution_id, signed)`. `validate_component(...)` — dry-run lint without writing. **OK/NF contract server-enforced** — `evaluate` returning `"nf:..."` fails with `error.class="check_failed"` (alpha.13+); assert `return <verified> ? 'ok: <state proof>' : 'nf: <reason>'`. KB `9430ae8a` + `04e3cc28`. `wait_until kind: "js"` aliases `"custom"` (alpha.12+). Sign-gate tolerates non-critical failures (KB `1dc73359`). Slim responses on save/review/sign — use `get_component(name, method)` for full payload.
 
-Version tests drive in-development work — they are written BEFORE implementation completes, start red, and go green phase-by-phase as the implementation lands.
+Version tests drive in-development work — written BEFORE implementation completes, start red, go green phase-by-phase as implementation lands.
 
 ## Phase 4 §4.6 + §4.7 — phase-gated signing
 
-Same teammate set (one `qa-author` per journey → fresh `qa-reviewer` → `qa-runner`) as regression. Difference is **when signing fires:**
+Same teammate set as regression. Difference: **when signing fires.**
 
-- Regression: smoke must pass at author time; sign immediately on pass.
-- Version: tests are authored as `draft` with `gates_on_plan_phase = <phase_id>` set. Tests stay red until the plan phase ships (`dev_task.status='shipped'` event triggers the auto-smoke per §4.7); on green, the test becomes eligible for sign.
+- **Regression:** smoke passes at author time; sign immediately on pass.
+- **Version:** authored as `draft` with `gates_on_plan_phase = <phase_id>`. Tests stay red until plan phase ships (`dev_task.status='shipped'` triggers auto-smoke per §4.7); on green → eligible for sign.
 
-Pass `gates_on_plan_phase` in your dispatch prompt to each `qa-author` teammate so they set it on every authored test_case.
+Pass `gates_on_plan_phase` in your dispatch to each `qa-author`.
 
-## Phase 5 §5.1 — intent_sources required
+## Phase 5 §5.1 — intent_sources REQUIRED
 
-Every version test MUST land with `intent_sources` populated (≥1 entry). The natural intent for a version test is the dev plan's user-journey row + the dev_task it gates on. Pass these to the lead. Reviewer's 13th attestation will hard-block sign if intent_sources is empty.
+Every version test MUST land with `intent_sources` populated (≥1 entry). Natural intent: the dev plan's user-journey row + the dev_task it gates on. Reviewer's 13th attestation HARD-blocks sign if intent_sources is empty.
 
 ## Common prelude — server is the single source of truth
 
-- All QA rules live on the server in `backend/src/mcp/v3/methodology.ts`. Do NOT repeat rule text here — load it via `get_qa_methodology(section)`.
-- `methodology_key` TTL is 2 hours. Re-fetch if expired.
-- Sub-agents fetch methodology themselves on dispatch. You pass CONTEXT + intent; they load rules.
+All QA rules live on the server in `methodology.ts`. DO NOT repeat rule text here — load via `get_qa_methodology(section)`. `methodology_key` TTL is 24h. Sub-agents fetch methodology themselves on dispatch.
 
 ## Key difference from regression
 
@@ -44,135 +36,92 @@ Every version test MUST land with `intent_sources` populated (≥1 entry). The n
 |---|---|---|
 | Target | Shipped behavior | In-development feature |
 | Source of truth | Code + running app | Plan's Journey table + spec (code is in flux) |
-| Starting state | Tests go green on day 1 | Tests start red, go green phase-by-phase |
+| Starting state | Green day 1 | Red, go green phase-by-phase |
 | Coverage contract | "Protect what works" | "Implement every Ready row" |
 
 ## Your journey
 
 ### Step 0 — Load methodology BEFORE designing the contract
 
-**HARD RULE.** Before you propose a coverage contract, before you decompose the spec, before you write a single test row — call:
+**HARD RULE.** Before proposing a coverage contract, before decomposing, before writing a single test row:
 
 ```
 get_qa_methodology(section: "process")
 get_qa_methodology(section: "block_format")
 ```
 
-The "process" section contains the rule that most often gets missed at design time:
+The `process` section contains the rule most often missed at design time:
 
-> **E2E TESTS ARE JOURNEYS, NOT INDIVIDUAL OPERATIONS.** An e2e test is a complete user journey: login, setup, action, verification. *"Create expense"* and *"Edit expense"* are NOT separate e2e tests — they are steps within a *"CRUD Lifecycle"* journey. Multi-block (3–8 blocks minimum) is required for `test_type='e2e'`.
+> **E2E TESTS ARE JOURNEYS, NOT INDIVIDUAL OPERATIONS.** An e2e test is a complete user journey: login, setup, action, verification. *"Create expense"* and *"Edit expense"* are NOT separate e2e tests — they are steps within a *"CRUD Lifecycle"* journey. Multi-block (3–8 minimum) required for `test_type='e2e'`.
 
-If you propose without this rule loaded, you will reflexively map one acceptance criterion to one test and inflate the suite by 4–6×. Every AC under the same admin page / same user role / same workflow belongs in **one journey** as separate blocks, not separate tests.
+Propose without this rule loaded → reflexively map one AC to one test → inflate suite 4–6×. Every AC under the same admin page / same user role / same workflow belongs in **one journey** as separate blocks, not separate tests.
 
-The methodology_key returned by this call is also required by `create_test_case` later — load now, save the key, reuse on dispatch.
+The methodology_key from this call is also required by `create_test_case` later — save it, reuse on dispatch.
 
 ### Step 1 — Scope detection
 
-Version tests are authored from a plan. The user either:
-- Invoked `/implement <plan-path>` (Track B of the implement flow triggers this skill)
-- Said "write tests for [plan or feature]"
-- Pointed at a spec document or a PRD node
-
-Identify the source. The **Journey table** in the plan (or its equivalent in the spec) is the authoring contract — every row with Status=Ready MUST become a test.
+Authored from a plan: `/implement <plan-path>` (Track B), "write tests for X", or a pointer at a spec/PRD node. Identify the source. The **Journey table** is the authoring contract — every Status=Ready row MUST become a test.
 
 ### Step 2 — Load the plan + Journey table
 
-Read the full plan. Extract:
-- Requirements table
-- Journey table (the coverage contract)
-- Acceptance criteria from linked spec sections (if any)
-- Security considerations (version tests often need adversarial scenarios)
-
-If no Journey table exists, STOP — the plan is not ready for authoring. Tell the user: "the plan needs a Journey table before version authoring; use /dev-plan to add one."
+Read the full plan. Extract: Requirements table, Journey table (coverage contract), acceptance criteria from linked spec sections, security considerations (version tests often need adversarial scenarios). No Journey table → STOP, tell user: "Plan needs a Journey table before version authoring; use `/dev-plan`."
 
 ### Step 3 — Explore survey context
 
-Since the implementation is in flux, your survey focuses on what's stable:
-- Sidebar labels and navigation structure (usually stable from Phase 1)
-- Routes planned in the requirements (may not all exist yet — that's fine, tests author against the plan's contract)
-- Platform + KB lookup: `search_test_knowledge(platform)`
+Implementation is in flux; focus on what's stable: sidebar labels + navigation (usually stable from Phase 1); planned routes (may not exist yet — tests author against the plan's contract); platform + KB lookup via `search_test_knowledge(platform)`.
 
 ### Step 4 — Prepare dispatch
 
 1. `get_test_profiles()` — pass IDs/roles forward.
-2. `create_test_suite(name, category: "version")` — pass the ID forward. Link to `version_id` if the project has an active version.
+2. `create_test_suite(name, category: "version")` — pass ID forward. Link to `version_id` if the project has an active version.
 
-### Step 4.5 — Component discovery + mode probe (BEFORE dispatching anyone)
+### Step 4.5 — Component discovery + mode probe (BEFORE dispatching)
 
-1. **`get_component_discovery({intent_sources, module})`** — combines existing-tests / dev-plan / PRD / codebase signals to produce a **candidate-component list** with cross-test reuse pre-evaluated (§7.1 5-rule rules 2/3/5). The candidate list will be handed to each qa-author teammate.
-2. **Probe Agent Teams availability.** Try `Agent(subagent_type:'qa-author', ...)` with a no-op prompt + then `SendMessage` to that teammate. If the message returns successfully, you're in **Team mode** (multi-turn teammates kept alive). If `SendMessage` errors with "tool not available" or similar, you're in **sub-agent mode** (one-shot dispatch). Pick mode for the WHOLE orchestration; do not mix.
-3. **Pre-acquire profile + capture storageState** (optional but recommended): `acquire_profile({role, environment_id})` once for the whole batch; drive a quick login session yourself; capture storageState to `.st4ck/state-<feature>.json`. Pass the `profile_id` + storageState path into each qa-author dispatch so teammates skip login (avoids N-login friction).
+1. **`get_component_discovery({intent_sources, module})`** — combines existing-tests / dev-plan / PRD / codebase → **candidate-component list** with cross-test reuse pre-evaluated (§7.1 rules 2/3/5).
+2. **Probe Agent Teams.** Try `Agent(subagent_type:'qa-author', ...)` no-op + `SendMessage`. Success → **Team mode**; error → **sub-agent mode**. Pick ONE for the whole orchestration.
+3. **Pre-acquire profile + storageState** (recommended): `acquire_profile({role, environment_id})` once for the batch; drive a quick login; capture to `.st4ck/state-<feature>.json`. Pass `profile_id` + storageState path to each dispatch so teammates skip login.
 
 ### Step 5 — Dispatch one qa-author per test journey
 
-Per the lead role-doc above, you dispatch leaf teammates yourself (you are the lead). The team shape is:
+Per the lead role-doc, you dispatch leaf teammates yourself. Team shape:
+- **One `qa-author` per Journey table row** (parallel via multiple `Agent` calls in one message — up to 5 concurrent, 8 with `ST4CK_MAX_CONTEXTS_PER_DAEMON`).
+- Each qa-author drives ONE Session against its journey, captures primitives, decomposes the trace into save_component(s) + create_test_case. See `shared/qa-dispatch-contracts.md`.
+- Pass each: journey description, `intent_sources`, `gates_on_plan_phase = <phase_id>`, candidate-component list (Step 4.5), existing library, `profile_id` + storageState.
 
-- **One `qa-author` per row in the Journey table** (parallel via multiple `Agent` tool calls in one message — up to 5 concurrent on a single daemon, configurable to 8 via `ST4CK_MAX_CONTEXTS_PER_DAEMON`).
-- Each qa-author drives ONE Session against its journey, captures primitives, decomposes the trace into save_component(s) + create_test_case at the end. See `shared/qa-dispatch-contracts.md` for the dispatch template.
-- Pass each teammate: the journey description, `intent_sources`, `gates_on_plan_phase = <phase_id>`, the candidate-component list (from Step 4.5), the existing component library, the pre-acquired `profile_id` + storageState path.
+### Step 6 — Validate teammate verdicts (mode-aware recovery)
 
-### Step 6 — Validate teammate verdicts (mode-aware verdict recovery)
+Per returning teammate: every Ready row has a test? Every edge row covered? `get_components()` — every referenced component exists?
 
-As each teammate returns:
-- Every Status=Ready row in the Journey table has a corresponding test?
-- Every edge row covered?
-- Any additional edge cases the author discovered during code reading beyond the plan?
-- `get_components()` — every referenced component exists?
-
-If a teammate returns `outcome: 'stuck'` (or truncates / returns ambiguous status), DO NOT reflexively spawn another sub-agent. **Try orchestrator-inline diagnosis FIRST** — read the failing execution's `structured_log` (`failed_only: true`), read 1–2 referenced components, reason inline about whether the failure is one layer deeper than the sub-agent reached. Budget ~20K tokens, 2–3 tool calls. See `shared/authoring-lead-role.md` § "Stuck-sub-agent recovery" for the full pattern.
-
-Only after the inline pass, route per the §5.7 escalation matrix. **For recoverable stucks where you have new info to share** (e.g., a missing component the orchestrator can supply via a quick separate dispatch):
-- **Team mode**: `SendMessage` the same teammate with the new info. It keeps its context (KB hits, source reads, snapshots) and revises its work.
-- **Sub-agent mode**: Re-dispatch a fresh `qa-author` with the original spec + the new info appended. New context window, same outcome shape.
+If a teammate returns `outcome: 'stuck'` (or ambiguous), **DO NOT reflexively spawn another sub-agent**. **Try orchestrator-inline diagnosis FIRST** — read failing execution's `structured_log` (`failed_only: true`), read 1–2 referenced components, reason inline. Budget ~20K tokens, 2–3 tool calls. See `shared/authoring-lead-role.md` § "Stuck-sub-agent recovery". Only after, route per §5.7. Recoverable stucks: **Team** → `SendMessage` same teammate; **sub-agent** → re-dispatch fresh `qa-author` with original spec + new info appended.
 
 ### Step 6.5 — Promotion sweep (cross-test 5-rule decisions)
 
-After all qa-authors return, scan returned `test_cases` for **inline primitive sub-sequences** that appear in ≥2 tests. These are the rule 2/3/5 promotions per §7.1 — repeated patterns that the per-test teammates couldn't evaluate alone (each only saw its own test).
+After all qa-authors return, scan returned `test_cases` for **inline primitive sub-sequences** appearing in ≥2 tests (§7.1 rules 2/3/5). Per repeated sequence: author as a component via `save_component` (TRIAD: file:line + snapshot excerpt + KB result); `modify_test_case` each test_case to replace inlines with the component call. Typical contracts promote 2–5 components.
 
-For each repeated sequence:
-- Author it as a proper component via `save_component` (TRIAD evidence required: file:line + snapshot excerpt + KB result).
-- For each test_case that contained the inline sequence: `modify_test_case` to replace the inline primitives with the new component call.
+### Step 7 — Dispatch qa-reviewer (INDEPENDENT — MUST NOT be the author)
 
-For typical contracts (5–13 journeys), this usually promotes 2–5 components from the inline noise. For very small contracts (1–2 tests), it's a no-op.
-
-### Step 7 — Dispatch qa-reviewer (INDEPENDENT — must NOT be the author)
-
-Use `qa-reviewer dispatch contract` from `shared/qa-dispatch-contracts.md`. Always a fresh instance. Server enforces independence at sign time.
-
-If review fails with findings: re-dispatch the same qa-author teammate (Team mode) or a fresh qa-author (sub-agent mode) with the reviewer's findings. Then re-dispatch a fresh qa-reviewer. Loop reviewer ↔ author until signed.
+Use `qa-reviewer dispatch contract` from `shared/qa-dispatch-contracts.md`. Always a fresh instance. Server enforces independence at sign time. Review fails → re-dispatch same qa-author (Team) or fresh (sub-agent) with findings → re-dispatch fresh reviewer. Loop until signed.
 
 ### Step 8 — Dispatch qa-runner (smoke + execution)
 
-Once tests are signed, dispatch `qa-runner` with the test_case_ids + base_url + environment. The runner drives the `st4ck` brand CLI (`npx st4ck@latest run`), handles agentic-block IPC pauses inline (`{"op":"continue"}` over the runner's stdin; brief steps drive via `st4ck browse <op>` against the paused `session_name`), and returns per-test verdicts. For version tests born red (waiting on phase-gated signing), skip this step until `dev_task.status='shipped'` flips the test to eligible.
+Once signed, dispatch `qa-runner` with test_case_ids + base_url + environment. Runner drives `npx st4ck@latest run`, handles agentic IPC pauses inline (`{"op":"continue"}` over stdin; brief via `st4ck browse <op>` against paused `session_name`), returns per-test verdicts. Version tests born red wait until `dev_task.status='shipped'` flips eligibility — skip this step until then.
 
-### Step 9 — Report back to orchestrator (or user)
+### Step 9 — Report back
 
-If called from `/implement`, update the implement state file with suite ID + test IDs. Otherwise present:
+If called from `/implement`, update the implement state file with suite ID + test IDs. Else present:
 
 ```
-## Version Tests Authored: [feature name]
-
+## Version Tests Authored: [feature]
 - Suite ID: [uuid]
 - Tests: [N] signed, [N] rejected
-- Journey coverage: [N/N] rows from plan implemented
+- Journey coverage: [N/N] rows implemented
 - Edge cases added beyond plan: [list]
 ```
 
-Tests are now ready to run via `/st4ck:st4ck-run` or `/st4ck:regression-run`. They will start red and go green phase-by-phase as implementation completes.
+Tests now ready via `/st4ck:st4ck-run` or `/st4ck:regression-run`. They start red, go green phase-by-phase as implementation completes.
 
----
+## TDD reminder
 
-## TDD flow reminder
-
-Version tests drive TDD — they exist BEFORE the feature they test. It is EXPECTED that:
-- Authored tests fail immediately when run (the feature isn't built yet).
-- Tests go green phase-by-phase as `/implement` completes each phase.
-- When all tests green → the feature is done.
-
-Do NOT author tests that "look passing" on day 1. If they pass on day 1, they are probably asserting something trivial, or the feature already existed (use regression instead).
-
----
-
-## Dispatch contracts
+Version tests drive TDD — they exist BEFORE the feature. EXPECTED: authored tests fail immediately; go green phase-by-phase as `/implement` completes; all green → feature done. DO NOT author tests that "look passing" on day 1 — trivial OR the feature already existed (use regression).
 
 @${CLAUDE_PLUGIN_ROOT}/shared/qa-dispatch-contracts.md
