@@ -112,10 +112,10 @@ After launch you alternate `snapshot` → action → `snapshot` until the page s
 npx st4ck@latest browse snapshot --session foo
 
 # Click a button by its accessible role+name.
-npx st4ck@latest browse click --session foo --by role --value button --name "Sign in"
+npx st4ck@latest browse click --session foo --locator-by role --locator-value button --name "Sign in"
 
 # Fill an input by its label.
-npx st4ck@latest browse fill --session foo --by label --value "Email" --text "alice@example.com"
+npx st4ck@latest browse fill --session foo --locator-by label --locator-value "Email" --text "alice@example.com"
 
 # Press Enter — locator is optional for press.
 npx st4ck@latest browse press --session foo --key Enter
@@ -125,12 +125,14 @@ Locator flags are shared by `click` / `fill` / `select` / `hover` / `check_box` 
 
 | Flag | Purpose |
 |---|---|
-| `--by <kind>` | One of `testid` \| `role` \| `label` \| `placeholder` \| `text` \| `css` \| `xpath`. |
-| `--value <v>` | The value matched against `--by` (selector text, role string, label text, etc.). |
-| `--name "<accname>"` | Accessible-name option (only with `--by role`). |
-| `--exact` | String equality on `--value` (default is substring). |
+| `--locator-by <kind>` | One of `testid` \| `role` \| `label` \| `placeholder` \| `text` \| `css` \| `xpath`. |
+| `--locator-value <v>` | The value matched against `--locator-by` (selector text, role string, label text, etc.). `--selector` is an alias. |
+| `--name "<accname>"` | Accessible-name option (only with `--locator-by role`). |
+| `--exact` | String equality on `--locator-value` (default is substring). |
 | `--scope-by <kind>` + `--scope-value <v>` | Constrain the locator to a container element (e.g. `--scope-by role --scope-value dialog`). |
 | `--timeout-ms <n>` | Override the default 30s actionability timeout. |
+
+(`--by` / `--value` are still accepted as deprecated aliases of `--locator-by` / `--locator-value`, with a stderr deprecation warning.)
 
 Prefer `testid` > `role+name` > `label` > `placeholder` > `text` > `css`. CSS is the last resort — brittle to markup changes. Never bare-tag (`button`, `div`).
 
@@ -141,25 +143,25 @@ Prefer `testid` > `role+name` > `label` > `placeholder` > `text` > `css`. CSS is
 npx st4ck@latest browse navigate --session foo --url "https://example.com/dashboard"
 
 # click
-npx st4ck@latest browse click --session foo --by testid --value "submit-btn"
+npx st4ck@latest browse click --session foo --locator-by testid --locator-value "submit-btn"
 
 # fill
-npx st4ck@latest browse fill --session foo --by label --value "Email" --text "alice@example.com"
+npx st4ck@latest browse fill --session foo --locator-by label --locator-value "Email" --text "alice@example.com"
 
 # press (locator optional)
 npx st4ck@latest browse press --session foo --key Tab
 
 # select — exactly one of --option-value | --option-label | --option-index
-npx st4ck@latest browse select --session foo --by label --value "Country" --option-value "NL"
+npx st4ck@latest browse select --session foo --locator-by label --locator-value "Country" --option-value "NL"
 
 # check_box — exactly one of --checked | --unchecked
-npx st4ck@latest browse check_box --session foo --by label --value "I agree" --checked
+npx st4ck@latest browse check_box --session foo --locator-by label --locator-value "I agree" --checked
 
 # hover
-npx st4ck@latest browse hover --session foo --by testid --value "tooltip-trigger"
+npx st4ck@latest browse hover --session foo --locator-by testid --locator-value "tooltip-trigger"
 
 # upload (--file repeats for multi-file)
-npx st4ck@latest browse upload --session foo --by testid --value "file-input" --file /abs/path/photo.jpg
+npx st4ck@latest browse upload --session foo --locator-by testid --locator-value "file-input" --file /abs/path/photo.jpg
 
 # wait_until — JS expression polled until truthy or --timeout-ms expires
 npx st4ck@latest browse wait_until --session foo --js "document.querySelectorAll('[data-row]').length > 0" --timeout-ms 10000
@@ -211,9 +213,9 @@ npx st4ck@latest browse screenshot --session foo --out /tmp/clip.jpg --type jpeg
 
 # Locator-driven screenshot — capture just one element by accessible locator.
 # Beats pixel `--clip` for visual diffs because the locator survives layout shifts.
-# Same locator flags as click/fill: --by/--value/--name + optional --scope-by.
-npx st4ck@latest browse screenshot --session foo --out /tmp/btn.png --by role --value button --name "Save"
-npx st4ck@latest browse screenshot --session foo --out /tmp/card.png --by testid --value "user-card"
+# Same locator flags as click/fill: --locator-by/--locator-value/--name + optional --scope-by.
+npx st4ck@latest browse screenshot --session foo --out /tmp/btn.png --locator-by role --locator-value button --name "Save"
+npx st4ck@latest browse screenshot --session foo --out /tmp/card.png --locator-by testid --locator-value "user-card"
 ```
 
 `snapshot` / `url` / `page-errors` / `screenshot` are introspection-only — they don't land in the captured md file. Use `snapshot` liberally between actions, `page-errors` whenever the page behaves blank or unresponsive, and `screenshot` for visual audit / debugging when "evaluate-only" leaves you guessing whether layout is right.
@@ -240,7 +242,7 @@ npx st4ck@latest browse wait_until --session foo --js "document.querySelectorAll
 npx st4ck@latest browse wait_until --session foo --url "**/dashboard"
 
 # Wait for an element to be visible / hidden / attached / detached (locator-driven).
-npx st4ck@latest browse wait_until --session foo --by role --value button --name "Save" --kind visible
+npx st4ck@latest browse wait_until --session foo --locator-by role --locator-value button --name "Save" --kind visible
 
 # Wait for the network to go idle (kind=networkidle).
 npx st4ck@latest browse wait_until --session foo --kind networkidle
@@ -291,9 +293,9 @@ npx st4ck@latest browse launch https://app.com -s alice
 npx st4ck@latest browse launch https://app.com -s bob
 
 # Drive them in alternating Bash calls.
-npx st4ck@latest browse click --session alice --by role --value button --name "Login"
-npx st4ck@latest browse fill  --session bob   --by label --value "Email" --text "bob@..."
-npx st4ck@latest browse click --session alice --by testid --value "submit"
+npx st4ck@latest browse click --session alice --locator-by role --locator-value button --name "Login"
+npx st4ck@latest browse fill  --session bob   --locator-by label --locator-value "Email" --text "bob@..."
+npx st4ck@latest browse click --session alice --locator-by testid --locator-value "submit"
 
 # List active sessions.
 npx st4ck@latest browse list
