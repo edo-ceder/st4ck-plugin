@@ -232,6 +232,29 @@ npx st4ck@latest browse set_viewport_size --session foo --width 414 --height 896
 
 Maps to Playwright's `page.setViewportSize`. Page-level — for a different logical device (different UA / touch / DPR), launch a fresh session with `--device <name>`.
 
+#### `set_visibility` — simulate a real OS tab switch (recorded — issue 56b8b016)
+
+```bash
+# Tab away (document.visibilityState → hidden, fires visibilitychange + window blur):
+npx st4ck@latest browse set_visibility --session foo --state hidden
+# Tab back:
+npx st4ck@latest browse set_visibility --session foo --state visible
+# Focus-driven bugs where timers must keep running while "away" (no lifecycle freeze):
+npx st4ck@latest browse set_visibility --session foo --state hidden --no-freeze
+```
+
+Repro form-wipe-on-refocus, focus-driven refetch loops, and modal-stack-on-tab-back bugs. NOTE: no CDP method flips the controlled page's real `document.visibilityState` in current Playwright/Chromium, so this is a JS-level emulation (overrides the visibilityState/hidden getters + dispatches the real `visibilitychange` / `blur` / `focus`) — subscribers reading `document.visibilityState` and those listening for the events both observe it. `freeze` (default) also fires the Page Lifecycle signal; `document.hasFocus()` (native) is not shimmed; the override resets on navigation.
+
+#### `bubble_notifier_health` — Bubble pre-flight health probe (issue fd85d2cc)
+
+```bash
+# Run BEFORE driving a Bubble UI suite. status: degraded | healthy | unknown.
+npx st4ck@latest browse bubble_notifier_health --session preflight
+npx st4ck@latest browse bubble_notifier_health --session preflight --probe-ms 12000
+```
+
+Probes the Bubble notifier WebSocket (`wss://notifier.api.<region>.bubble.io`) by reloading + watching console/requestfailed over the window. `degraded` (handshake 502s) means Bubble's live-state pushes won't arrive and `wait_until` polls will time out for reasons unrelated to your test — halt the suite and retry in ~10 min instead of burning drives. `--no-reload` for a mid-session re-probe (only catches errors firing during the window).
+
 #### `wait_until` — Playwright's full wait surface
 
 ```bash
