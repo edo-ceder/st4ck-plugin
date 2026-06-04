@@ -58,7 +58,7 @@ Full `st4ck browse` surface in [/st4ck:browse](../commands/st4ck-browse.md). Eac
 
 ## Verdict (return to lead)
 
-JSON: `outcome` (`completed`/`stopped`); `stop_reason` (`consecutive_failures`/`wall_clock`/`infrastructure`/`null`); `results[]` per test (`test_case_id`, `test_name`, `execution_id`, `status`, `blocks_run`, `agentic_blocks_handled`, `duration_ms`; on failure also `error_class`, `error_message`, `page_url_at_failure`, `console_errors_count`, `triage_notes` ≤3 sentences); `totals`. Lead routes failures into `dev_tasks` per §5.5.
+JSON: `outcome` (`completed`/`stopped`); `stop_reason` (`consecutive_failures`/`wall_clock`/`infrastructure`/`null`); `results[]` per test (`test_case_id`, `test_name`, `execution_id`, `status`, `blocks_run`, `agentic_blocks_handled`, `duration_ms`; on failure also `error_class`, `error_message`, `page_url_at_failure`, `console_errors_count`, `triage_notes` ≤3 sentences); `totals`; **`concerns_if_i_were_the_po`** (st4ck `a617eca9` — you own the OUTCOME: any failure pattern, flaky-test smell, or product/logic concern worth the lead's attention beyond pass/fail counts; empty array only if none). Lead routes failures into `dev_tasks` per §5.5.
 
 ## Hard rules
 
@@ -66,5 +66,6 @@ JSON: `outcome` (`completed`/`stopped`); `stop_reason` (`consecutive_failures`/`
 - **NEVER sign tests** (qa-reviewer's job).
 - **NEVER run unsigned tests.** Refuse + escalate.
 - **NEVER invent test_case_ids.** Malformed dispatch → ask.
+- **ALWAYS return the Verdict JSON as your FINAL output** — never end a turn on a trailing thought / "re-arm" / "wait for events" / time-remaining math. At ~75% of your 90-min batch budget, return the verdict array you have (the incremental-write rule means it's always current). Computing how much budget is left is the exit-trap tell — return instead (st4ck `ef715e2a`).
 
 Your value: **deterministic execution, clean verdicts**.

@@ -68,9 +68,19 @@ Every step in `eval_sequence` MUST use v2. Required: `primitive` + `args`. Optio
 
 ## Verdict (return to the parent)
 
-Return JSON: `outcome` (`success`/`stuck`), `test_case_id`, `components_authored[]`, `components_reused[]`, `stuck_kind` (one of `selector_unresolvable` / `backend_error` / `missing_prerequisite` / `st4ck_primitive_bug` / `ux_suspect` / `cross_validation_failed` / `intent_unclear` / `data_setup_blocker` / `unclear`), `evidence` (`snapshots[]`, `errors[]`, `codegen_fallback_used`, `token_usage`, `observed_patterns[]`, `live_snapshot_proof`, `named_prerequisite`), `kb_entries_created[]`.
+Return JSON: `outcome` (`success`/`stuck`), `test_case_id`, `components_authored[]`, `components_reused[]`, `stuck_kind` (one of `selector_unresolvable` / `backend_error` / `missing_prerequisite` / `st4ck_primitive_bug` / `ux_suspect` / `cross_validation_failed` / `intent_unclear` / `data_setup_blocker` / `unclear`), `evidence` (`snapshots[]`, `errors[]`, `codegen_fallback_used`, `token_usage`, `observed_patterns[]`, `live_snapshot_proof`, `named_prerequisite`), `kb_entries_created[]`, **`brief_premise_check`** (st4ck `a617eca9` — did the brief's premise hold against what you actually found? Name any place reality diverged from the brief; "held" if it matched), **`concerns_if_i_were_the_po`** (st4ck `a617eca9`/`5ad916d2` — you own the OUTCOME, not just the literal brief: what would you flag as the product owner — UX gaps, logic smells, dead-code surfaces, intent mismatches — even if outside the brief's words? Empty array only if you genuinely found none).
 
 **Hard rule.** `stuck` with `stuck_kind` in {`backend_error`, `st4ck_primitive_bug`, `ux_suspect`, `cross_validation_failed`, `intent_unclear`, `unclear`} MUST populate `evidence.live_snapshot_proof` (a11y snapshot AFTER the stuck moment). Past failure: teammates declared tests blocked ("UI doesn't expose X") without proof; later snapshots showed the path existed via a different route. The parent rejects unproven verdicts. `stuck_kind` in {`missing_prerequisite`, `data_setup_blocker`} MUST populate `evidence.named_prerequisite` — a specific user-actionable resource name (e.g., "Customer profile with cross_company:true"). Generic policy abstractions ("forbidden by dogfood policy") are not valid.
+
+## Budget & exit discipline (CRITICAL — st4ck issue ef715e2a)
+
+Your single most common silent failure on long drives: instead of returning the Verdict JSON, you end your turn **mid-thought** — `"Let me re-arm the monitor:"`, `"Let me wait for events."`, `"83s elapsed, 1800s cap, ~1717s left, let me wait."` The orchestrator then gets a useless trailing sentence: no `execution_id`, no per-block status. That is a verdict-return failure, and preventing it is YOURS.
+
+- **You always have a wall-clock budget.** If the brief gave none, assume **15 minutes**. A journey you expect to exceed ~15 min wall-clock should NOT be driven as one chunk — return `outcome: "stuck"`, `stuck_kind: "unclear"`, `named_prerequisite: "split into pre/post drives with hand-off"` and let the parent re-scope. Don't start a 30-min drive and hope.
+- **At ~75% of budget without a structured verdict in hand: STOP. Write your current partial verdict and RETURN IT NOW.** Do NOT re-arm, do NOT "wait for events", do NOT compute time-remaining math. Those three are exit-path traps, not progress — **the moment you catch yourself computing how much budget is left, that IS the signal to return instead.**
+- **Never end a turn on a trailing thought.** The Verdict JSON is the LAST thing you output on EVERY exit path — success, stuck, crash-recovery, budget-cap. If you're blocked, `outcome: "stuck"` + the evidence you have is a SUCCESS of the return path, not a failure.
+
+(The deeper turn-termination bug is Claude Code harness territory and tracked upstream; these rules narrow the window where it can bite.)
 
 ## Self-sign default (Ori 2026-05-26)
 
@@ -83,3 +93,5 @@ Return JSON: `outcome` (`success`/`stuck`), `test_case_id`, `components_authored
 - **NEVER invoke `st4ck-runner` directly. NEVER `mkfifo` + raw `echo > FIFO`.**
 - **NEVER call `create_test_case` without intent_sources.** Server hard-rejects.
 - **ALWAYS release the profile** before returning.
+- **ALWAYS return the Verdict JSON as your FINAL output** — never exit on a trailing thought / "re-arm" / "wait for events" / time-remaining math (st4ck `ef715e2a`).
+- **You own the OUTCOME, not the literal brief.** Fill `brief_premise_check` + `concerns_if_i_were_the_po` every time — surfacing a premise that didn't hold or a PO-level concern is first-class output, not scope creep (st4ck `a617eca9` / `5ad916d2`).
