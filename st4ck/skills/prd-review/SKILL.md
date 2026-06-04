@@ -84,6 +84,8 @@ Each prompt MUST include the attestation requirement (`prd-from-source` iron rul
 
 > You are reviewing a PRD as a developer needing to verify the system. The PRD is at `<path>/docs/prd/`. Pick at least 5 random specific claims, **verify each against the cited source files** under the project's source root. For each finding, cite both the PRD file you read AND the source file you checked. Focus on: source provenance correctness (do `source:` paths exist?); body claims hold against cited source; plausible-but-fabricated claims (spot-check ≥5); cross-links resolve; decomposition deep enough to anchor implementation; obvious dead-code claims treated as live.
 >
+> **Field-walk attestation (st4ck 7a03ce10) — MANDATORY for every cited entity field:** confirm the field's INTERNAL key (not its display name) has ≥1 writer or reader in `Reusable Elements/` / `Pages/` / `Backend Workflows/`. A `business_rule` / `backend_flow` node citing a schema field with ZERO code references is **dead schema documented as a live feature = CRITICAL** (same class as dead-code-as-live; the `dc31e7ae` Allowed-Produce burn). Also confirm every node's `verification_status` (shipped / aspirational / partial) matches the caller-walk — a feature whose workflows have 0 callers or are Disabled but is labeled `shipped` is a CONTRADICTED finding.
+>
 > Report each finding with **severity**, **PRD file path**, **claim being verified**, **source file checked**, **verdict** (CONFIRMED / CONTRADICTED / UNVERIFIABLE), **suggested fix if needed**. Specific. File paths and line numbers.
 
 ## Author self-review (before dispatching reviewers)
@@ -97,6 +99,7 @@ Catches obvious things cheaply:
 - [ ] Tree depth reaches 3–5 levels on at least some paths.
 - [ ] No function names, file paths, or DB column identifiers in MD bodies (only in frontmatter).
 - [ ] State machines have explicit allowed-transitions, triggers, side effects.
+- [ ] Every cited entity field code-walked (internal key has ≥1 writer/reader); no dead schema described as a live feature; every business_rule/backend_flow carries a correct `verification_status` (st4ck `7a03ce10`).
 - [ ] Cross-module reuse: physical reusables in `00_shared/`; cross-module concepts duplicated with cross-links.
 - [ ] Each subagent claim spot-checked against at least one source file.
 

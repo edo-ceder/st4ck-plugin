@@ -75,6 +75,42 @@ Rules: NO function/variable/component/class names or file paths in the body. Nam
 
 (Self-review checklist for declaring a module complete: see § Self-review checklist below.)
 
+## Code-walk verification & connecting layers (st4ck 7a03ce10 + 86a40b08)
+
+The Rebuild Test fails *silently* when the PRD grounds on the SCHEMA (field exists) instead of the CODE (field is wired). Ori `dc31e7ae` is the canonical burn: the schema had both `Customer.Allowed Produce` (positive whitelist) and `User.Products Blacklist` (negative blacklist); the PRD picked the whitelist because its NAME matched the described feature — but only the blacklist is wired into any code path. The whitelist is dead schema. A test was then authored against the dead carve-out.
+
+### Field-level code-walk — MANDATORY before a node cites any entity field
+
+A schema field appearing in an export is NOT evidence the feature is built. Before a node describes a feature backed by entity fields:
+
+1. **Enumerate ALL candidate fields** whose display name OR description matches the feature intent (grep the schema for the concept: "produce", "blacklist", "allowed", "visible", "status", …). Name-similarity to the described intent is a TRAP, not a signal.
+2. **For each candidate, code-walk its INTERNAL field key** (e.g. `product_library_list_custom_product_library`, NOT the display name "Products Blacklist" — display names lie, keys are stable) across `Reusable Elements/`, `Pages/`, `Backend Workflows/`. Count writers (ChangeThing / Save / Auto-bind) and readers (Data Source filters, Conditional States, dynamic expressions, Display text).
+3. **Include only fields with ≥1 writer OR ≥1 reader.** Zero refs → DEAD SCHEMA: move it to a `KNOWN GAPS / dead schema` bullet; never describe it as a feature.
+4. **If ZERO candidates have positive refs → the feature ISN'T BUILT.** The node must say so explicitly: "Schema defines `<field>` but no active code references it — intent, not shipped behavior." Never describe dead schema as if it were shipped.
+5. **If multiple candidates are active**, document the relationship inline (different polarities / roles).
+
+This is GREP-THEN-WALK at field granularity: grep finds candidates; the walk tells you which one is real. (Same discipline the `prd-review` reviewer must attest — see that skill.)
+
+### `verification_status` frontmatter (every business_rule / backend_flow / user_flow node)
+
+- `shipped` — cited workflow(s) have actions, are not Disabled, AND have ≥1 caller (Button Clicked / TriggerCustomEvent / ScheduleAPIEvent / DatabaseTriggerEvent).
+- `aspirational` — workflow/field exists but has 0 callers OR is Disabled OR has 0 active field refs. Documented intent, no active path.
+- `partial` — some cited paths alive, others dead-stub.
+
+Derive it from the same caller-walk. Test authors gate on this: NEVER author a test against an `aspirational` rule without first building the missing product code.
+
+### Connecting layers Pass 2 must emit (the inverse views test authors need most)
+
+PRDs document features in isolation; test authors need "if I mutate X, what reads it / what cascade fires?":
+
+- **Cross-reference matrix** — for each field mutated by ≥2 surfaces OR that is a cascade target, a "Who writes me / who reads me" section listing writer and reader workflows/elements.
+- **Async Cascades table** — for each module that owns an entity, list every DatabaseTriggerEvent that fires on it. Columns: `Trigger | Fire condition | Cascade output | Downstream impact`. DB triggers are the #1 most-missed surface (invisible from the UI).
+- **Multi-entry-point inventory** — for each popup/dialog, list every workflow that opens it (`DisplayGroupData` / `ToggleElement`) WITH each caller's Conditional State (the gate is on the opening BUTTON, not the popup). Test authors then pick the entry point matching their preconditions instead of hitting an unknown gate.
+- **Test-author trap** — 1–2 sentences per leaf on the most common way an author gets this wrong (confusable field pairs, async-wait requirements, unreachable states). Source: ask at author time, or pull the top `test_knowledge` hits for the file.
+- **Discoverability check** (final pass) — grep the drafted PRD for common test-scenario verbs (eliminate / cleanup / archive / expire / reset / cancel / revert / delete); if a real business rule's keywords don't surface, add alias keywords so a test author's grep finds it.
+
+(Server-side precompute of the writer/reader/caller graph during export parsing is a deferred optimization; until it lands, do the greps yourself with the code-search MCP tools — you already have them.)
+
 ## Phase 0 — Preliminaries (MANDATORY before walking any source)
 
 A PRD without an anchor produces garbled assumptions from raw code reading. Four checks before opening the first source file. 5 minutes total; saves hours of misinterpretation.
@@ -215,6 +251,8 @@ Why this matters: AGENTS.md has no update mechanism tied to product changes. Wor
 - [ ] No function names, file paths, or DB column names leaked into MD bodies.
 - [ ] Cross-links resolve to real PRD nodes.
 - [ ] Every `source:` path points at files that exist.
+- [ ] Every cited entity field has ≥1 writer or reader in code (no dead schema described as a feature — st4ck `7a03ce10`). Multi-candidate features code-walked the internal field key, not name-matched.
+- [ ] Every business_rule / backend_flow / user_flow node carries `verification_status` (shipped / aspirational / partial).
 - [ ] Every leaf has a "Test implications" section.
 - [ ] A stranger reading any leaf could implement that specific piece without guessing.
 - [ ] At least one claim per subagent report spot-checked against source.
@@ -229,6 +267,8 @@ Why this matters: AGENTS.md has no update mechanism tied to product changes. Wor
 - ❌ Writing 100 PRD nodes at once without checkpoint.
 - ❌ Designing for "the importer" before one exists.
 - ❌ Decoding obfuscated internal identifiers when the user-facing label is right there. PRD says "status moves to Submitted" — not "status moves to `____________`".
+- ❌ Grounding a feature on a schema field by NAME-match without code-walking its internal key (the `dc31e7ae` dead-schema trap, st4ck `7a03ce10`). The field existing in the export is not the feature being built.
+- ❌ Describing a workflow/field with zero callers/refs as shipped behavior instead of labeling it `aspirational`.
 
 ## Working order
 
