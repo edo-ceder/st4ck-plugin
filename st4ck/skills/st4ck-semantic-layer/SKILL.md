@@ -1,6 +1,6 @@
 ---
 name: st4ck-semantic-layer
-description: Use when authoring or updating a st4ck project's MCP semantic-layer docs (under the project's docs/MCP — the business-language-to-data guide an LLM reads before answering questions about that project's live data). Trigger after any data-model change (new/renamed field, option set/enum, table, or workflow), or when a glossary/metric/gotcha needs adding or correcting. Works for any st4ck project on any data source (Bubble, Supabase, or code). Keeps the layer grounded in the real schema, not guessed, and stamps each data file `source: mcp_server` so the Claude connector's get_project_guide delivers it.
+description: Use when authoring or updating a st4ck project's MCP semantic-layer docs (under the project's st4ck/docs/MCP — the business-language-to-data guide an LLM reads before answering questions about that project's live data). Trigger after any data-model change (new/renamed field, option set/enum, table, or workflow), or when a glossary/metric/gotcha needs adding or correcting. Works for any st4ck project on any data source (Bubble, Supabase, or code). Keeps the layer grounded in the real schema, not guessed, and stamps each data file `source: mcp_server` so the Claude connector's get_project_guide delivers it.
 ---
 
 # Maintaining a st4ck Project's Semantic Layer
@@ -9,8 +9,13 @@ description: Use when authoring or updating a st4ck project's MCP semantic-layer
 
 A **semantic layer** lets an external LLM (a project admin's Claude or GPT) turn business
 questions into correct queries against the project's live data over MCP. It lives in the
-project's `docs/MCP/` folder and syncs into the st4ck project documentation section. Your job is
+project's `st4ck/docs/MCP/` folder and syncs into the st4ck project documentation section. Your job is
 to keep it **true** and **minimal** for whichever st4ck project you're in.
+
+> **Path is load-bearing — use `st4ck/docs/MCP/`, not the repo root `docs/MCP/`.** The PRD GitHub
+> sync only scans `st4ck/docs/` (st4ck owns that subtree; it never touches your root `docs/`). A
+> guide authored at root `docs/MCP/` is invisible to the sync and imports **nothing** — the sync
+> reports success with 0 files. The whole folder then nests under one auto-created "MCP" node.
 
 ## What the layer is — and is not
 
@@ -53,7 +58,7 @@ source: mcp_server
   install / how-to-use docs — those are meta and must stay out of the guide (leave them with no
   frontmatter, or `source: import`).
 - You do **not** hand-arrange folders or add `sort_order`: on sync, st4ck derives reading order
-  from the `NN-` filename prefix and nests the whole `docs/MCP/` folder under one "MCP" node
+  from the `NN-` filename prefix and nests the whole `st4ck/docs/MCP/` folder under one "MCP" node
   automatically. Just keep the `NN-name.md` names + the `source: mcp_server` marker.
 - After authoring, the project owner runs the PRD GitHub sync (Settings → Integrations, or it
   runs on the next pull) and the guide is live for the connector. An **unmarked** file is
@@ -105,7 +110,7 @@ internal id (e.g. Bubble with `use_captions_for_get`). So:
    - **Supabase:** `supabase_list_tables` + `supabase_describe_table`; enums from the column
      types / `supabase_query` against `pg_enum` or a sample row.
    - **Code-only:** read the source; the code is truth over comments and docs.
-2. **Pre-sweep.** Grep the whole `docs/MCP/` tree for every mention of the field/value/term
+2. **Pre-sweep.** Grep the whole `st4ck/docs/MCP/` tree for every mention of the field/value/term
    you're touching — the surface is usually bigger than one line (glossary + metric + gotcha +
    dictionary often all reference the same field).
 3. **Fix**, applying the change across every site the pre-sweep found.
