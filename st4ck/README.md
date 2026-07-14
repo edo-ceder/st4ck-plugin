@@ -1,23 +1,23 @@
 # st4ck Plugin for Claude Code
 
-Role-separated implementation flow for [st4ck](https://st4ck.io) projects — from requirements through code, QA, and delivery.
+The agent-and-human lifecycle surface for full [st4ck](https://st4ck.io) — from requirements through code, QA, and delivery. Full st4ck pairs this plugin with an `app.st4ck.io` workspace; MCP-backed lifecycle features require that workspace.
 
 ## What This Plugin Does
 
-A single agent that writes code, creates tests, runs tests, and reviews results cuts corners. This plugin structurally separates those roles:
+A single agent that writes code, creates tests, runs tests, and reviews results can miss important checks. This plugin coordinates distinct workflow roles:
 
-- **Code Agent** writes code but can't touch tests
-- **QA Author** writes tests from specs but can't see implementation code
-- **QA Reviewer** independently reviews and signs tests it didn't write
-- **QA Runner** executes tests and reports evidence but can't modify anything
-- **Code Reviewer** reviews code independently with confidence scoring
+- **Code Agent** implements code without st4ck QA tools in its configured allowlist
+- **QA Author** writes tests from intent, source, and live behavior; direct file Edit/Write tools are disabled, while source Read and `st4ck browse` access remain available
+- **QA Reviewer** independently reviews high-risk or explicitly flagged suites; eligible standard suites may self-sign after the server's execution and attestation gates pass
+- **QA Runner** executes signed tests and reports evidence; its prompt is execution-only, while signature and test-shape validation are enforced by the service and runner
+- **Code Reviewer** reviews code with confidence scoring and is configured without Edit/Write tools
 
-Tool restrictions are enforced via Claude Code's agent `tools` / `disallowedTools` frontmatter — not just prompt instructions.
+Claude Code `tools` / `disallowedTools` frontmatter and role prompts provide useful write-scope guardrails, but they are not a security boundary. Durable guarantees come from server-enforced lineage, required attestations, passing-execution checks, and independent-review requirements for flagged suites.
 
 ## Prerequisites
 
 ### Required
-- **st4ck MCP servers** must be configured in your project `.mcp.json` or `~/.claude.json`. This plugin cannot configure MCP servers (security restriction for plugins).
+- **An `app.st4ck.io` workspace and its st4ck MCP servers** must be configured in your project `.mcp.json` or `~/.claude.json` for the MCP-backed lifecycle. This plugin cannot configure MCP servers (security restriction for plugins).
 
   Add to your project's `.mcp.json`:
   ```json
@@ -103,7 +103,7 @@ Help Product Owners think through features before writing requirements:
 
 Create regression test suites for shipped features:
 - 5-pass approach per module (survey → deep read → per-role → cross-role → audit)
-- Independent QA review and signing
+- Server-gated signing: eligible suites may self-sign after passing execution plus a non-empty end-to-end coverage attestation; high-risk or explicitly flagged suites require independent QA review
 - Coverage report against PRD
 
 ### `/regression-run` — Regression Test Execution
@@ -126,7 +126,7 @@ Execute signed regression suites and report results:
 
 Author version tests for in-development features — tests that go GREEN as implementation lands phase-by-phase:
 - Reads the plan-phase Journey table verbatim as the test contract
-- Dispatches one `qa-author` per journey + independent `qa-reviewer` for sign
+- Dispatches one `qa-author` per journey; an independent `qa-reviewer` signs suites flagged for independent review, while eligible suites follow the server-gated self-sign path
 - Each test carries `gates_on_plan_phase` so it stays red until the phase ships
 - `intent_sources` populated from the plan's user-journey row + dev_task
 - Pairs with `/implement` Track B for TDD-style development
@@ -230,15 +230,17 @@ Why: orchestrators systematically accept sub-agent verdicts ("can't find X", "X 
 
 ## Agent Architecture
 
-| Agent | Role | Tool Access |
-|-------|------|-------------|
-| Code Agent | Implement features | `tools`: Edit, Write, Bash, Read, Grep, Glob, LS, Agent |
-| Code Reviewer | Independent code review | `tools`: Read, Grep, Glob, LS, Bash |
-| Codebase Explorer | Explore and understand code | `tools`: Read, Grep, Glob, LS, Bash |
-| Solution Analyst | PO-friendly solution analysis | `tools`: Read, Grep, Glob, LS, Bash |
-| QA Author | Write tests from code + running app | `disallowedTools`: Edit, Write, Bash, NotebookEdit |
-| QA Reviewer | Review and sign tests | `disallowedTools`: Edit, Write, Bash, NotebookEdit |
-| QA Runner | Execute tests, report evidence | `tools`: Read, Grep, Glob, LS + st4ck-qa execution tools + browser |
+| Agent | Role | Configured client guardrails |
+|-------|------|------------------------------|
+| Code Agent | Implement features | Explicit allowlist includes Edit/Write/Bash but no st4ck QA tools |
+| Code Reviewer | Independent code review | Explicit allowlist omits Edit/Write |
+| Codebase Explorer | Explore and understand code | Explicit read-oriented allowlist; Bash remains available |
+| Solution Analyst | PO-friendly solution analysis | Explicit read-oriented allowlist; Bash remains available |
+| QA Author | Author tests from intent, source, and the running app | Edit/Write/NotebookEdit and Playwright MCP are disallowed; Bash remains available for `st4ck browse` |
+| QA Reviewer | Review and sign tests when independent review is required | Edit/Write/Bash/NotebookEdit and Playwright MCP are disallowed |
+| QA Runner | Execute signed tests and report evidence | Playwright MCP is disallowed; runner/service preflight validates signatures and forbidden test actions |
+
+These settings reduce accidental role overlap. They do not make the agent process a sandbox; deployments that need a hard security boundary must enforce it outside the client prompt/tool configuration.
 
 ## When to Use / When NOT to Use
 
@@ -308,12 +310,12 @@ All four skills load the QA methodology on demand from the server (`backend/src/
 ## Known Limitations (v1)
 
 - **Single-project only** — features spanning multiple repos are not supported
-- **QA Author code isolation is prompt-based** — the agent has Read access to the full codebase and browser access for UI exploration, but is instructed to default to code (not PRD/specs unless provided)
+- **QA Author code isolation is not a security property** — the agent has Read access to the full codebase and uses the live browser for UI exploration; authoring is grounded in supplied intent plus observed behavior
 - **Version test promotion is manual** — promoting version tests to regression is a manual st4ck operation
 - **Sequential browser sessions** — parallel QA execution across suites is unverified; falls back to sequential
 - **QA Runner requires the `st4ck` CLI** — invoke via `npx st4ck@latest run <test_id> <base_url>` from `Bash`. The runner ships its own Chromium via Playwright (`npx playwright install chromium` if needed). Tests run headed by default.
 - **Code Reviewer uses Sonnet** — intentionally hardcoded to `model: sonnet` for consistent code review quality regardless of session model. All other agents inherit the session model.
-- **`disallowedTools` verification needed** — if this field doesn't work for plugin agents, QA Author/Reviewer will need full `tools` allowlists
+- **Client write restrictions need host verification** — `tools` / `disallowedTools` behavior can vary by client version, so treat it as a workflow guardrail and verify the target host configuration
 - **Supervisor (Phase 1) is manual** — you must run `/supervise` yourself. Phase 2 will add an automated Stop hook.
 
 ## License

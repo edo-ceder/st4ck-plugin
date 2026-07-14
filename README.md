@@ -1,8 +1,8 @@
 # st4ck
 
-> **Role-separated implementation flow for st4ck projects — requirements through code, QA, and delivery.**
+> **The agent-and-human lifecycle surface for full st4ck — requirements through code, QA, and delivery.**
 
-The full Claude Code plugin for st4ck. Where `st4ck-lite` covers recording + replay, this plugin adds the **agent-team orchestration** that structures the whole development lifecycle behind role separation and tool restriction.
+st4ck has two product surfaces: `st4ck-lite`, the local OSS surface, and full st4ck, which pairs this plugin with an `app.st4ck.io` workspace. Full st4ck builds on Lite's PRD authoring, agent-driven recording, and deterministic replay and adds **agent-team lifecycle orchestration**, persistent intent, test/component lineage, attestation, impact analysis, and shared reuse. The MCP-backed lifecycle features require a workspace; the plugin is their agent-and-human client, not a standalone middle tier.
 
 ```bash
 # Inside Claude Code:
@@ -12,7 +12,7 @@ The full Claude Code plugin for st4ck. Where `st4ck-lite` covers recording + rep
 /st4ck:impact                                                       # diff → which tests are affected
 ```
 
-Every command dispatches purpose-built subagents with constrained tool surfaces — no one agent does everything, every step has a checkpoint, and quality is structurally enforced.
+Lifecycle commands coordinate purpose-built subagents, explicit human checkpoints, and role-specific write restrictions where configured. Those controls reduce accidental role overlap; the authoritative lineage, attestation, execution, and required-review gates are enforced by the st4ck service.
 
 ---
 
@@ -48,15 +48,15 @@ Three reviewer subagents — `prd-reviewer-po`, `prd-reviewer-qa`, `prd-reviewer
 
 ### Code + QA agents (used internally by the lifecycle skills)
 
-`code-agent`, `code-reviewer`, `codebase-explorer`, `qa-author`, `qa-reviewer`, `qa-runner`, `solution-analyst` — each with a constrained tool surface that enforces role separation.
+`code-agent`, `code-reviewer`, `codebase-explorer`, `qa-author`, `qa-reviewer`, `qa-runner`, `solution-analyst` — each with a defined workflow role and role-specific tool/write settings. These client-side settings are workflow guardrails, not a security boundary.
 
 ---
 
 ## Three principles
 
-**1. Role separation enforced by tools.** No agent does everything. The `qa-author` cannot modify code; the `code-agent` cannot author or sign tests; the `code-reviewer` is read-only. This isn't a convention — it's enforced by the tool allow-lists in each subagent definition.
+**1. Role separation by workflow and configured write scopes.** No agent is asked to do everything. The `qa-author` is configured without direct file-edit tools, the `code-agent` is not given st4ck QA tools, and the `code-reviewer` is configured without Edit/Write. Prompts and client tool settings reduce accidental overlap, but they are not a sandbox or security boundary.
 
-**2. Server-enforced quality.** Test cases are signed by independent reviewers via the st4ck server. The signing record is part of the test's lineage; tests cannot land without it. Self-signing, blanket sign-offs, and dismissed findings are all impossible by construction.
+**2. Server-enforced lineage and attestation.** The st4ck service persists test/component lineage, required intent and coverage attestations, execution evidence, and signatures. Eligible standard suites may self-sign only after a passing execution and non-empty end-to-end coverage attestation. High-risk or explicitly flagged suites — including security, version-gate, and high-blast-radius suites — reject self-signing and require an independent reviewer.
 
 **3. The intent layer is canonical.** PRDs, specs, and ADRs are the source of truth for behavior; code is the implementation that has to match them. When a test fails, the first question is "does the spec say this should pass?" — not "is the test wrong?". The PRD authoring skills bundled here exist because most platforms ship without this layer and only realize they need it after the first regression cycle.
 
@@ -64,27 +64,28 @@ Three reviewer subagents — `prd-reviewer-po`, `prd-reviewer-qa`, `prd-reviewer
 
 ---
 
-## Tiers
+## Product surfaces
 
-st4ck ships in three tiers. This plugin is the middle one.
+st4ck has two product surfaces. The plugin in this repository is the client half of full st4ck and is paired with the workspace; it is not a separate tier between Lite and the platform.
 
-| Capability | `st4ck-lite` | `st4ck` (this plugin) | `app.st4ck.io` paid |
-|---|:---:|:---:|:---:|
-| Record + deterministic md replay (zero LLM, zero $) | ✓ | ✓ | ✓ |
-| Locator-priority ladder (Tier-1 self-heal) | ✓ | ✓ | ✓ |
-| PRD authoring + 3-angle review pipeline | ✓ | ✓ | ✓ |
-| Lifecycle orchestration (`po-research` → `plan` → `implement` → `debug` → `impact`) | — | ✓ | ✓ |
-| Role-constrained code + QA agents | — | ✓ | ✓ |
-| Server-enforced signed reviews + attestation | — | ✓ | ✓ |
-| LLM self-heal on selector drift (Tier-2) | — | — | ✓ |
-| Cross-project knowledge base | — | — | ✓ |
-| Coverage reporting against intent sources | — | — | ✓ |
-| Security test generation pipeline (4-phase) | — | — | ✓ |
-| Multi-project + multi-environment orchestration | — | — | ✓ |
+| Capability | `st4ck-lite` / local OSS | Full st4ck: this plugin + `app.st4ck.io` workspace |
+|---|:---:|:---:|
+| Agent-driven record + deterministic md replay (zero LLM at replay) | ✓ | ✓ |
+| Locator-priority ladder (Tier-1 self-heal) | ✓ | ✓ |
+| PRD authoring + 3-angle review pipeline | ✓ | ✓ |
+| Basic local component authoring + reuse | Intended OSS capability; local registry not yet shipped in the current Lite alpha | ✓, backed by the workspace registry |
+| Lifecycle orchestration (`po-research` → `plan` → `implement` → `debug` → `impact`) | — | ✓ |
+| Role-specific code + QA agent workflows | — | ✓ |
+| Server-enforced test/component lineage + attestation | — | ✓ |
+| Independent review for high-risk or flagged suites | — | ✓ |
+| LLM self-heal on selector drift (Tier-2) | — | ✓ |
+| Cross-project knowledge base + coverage reporting | — | ✓ |
+| Security test generation + multi-project/environment orchestration | — | ✓ |
 
-- **`st4ck-lite`** — free OSS plugin. No account, no service, no MCP. Record tests with an agent, replay forever, zero $. → [github.com/edo-ceder/st4ck-lite](https://github.com/edo-ceder/st4ck-lite)
-- **`st4ck` (this plugin)** — open-source orchestration code that pairs with an `app.st4ck.io` workspace. The workspace implements the signed-review backend the principles above depend on; the plugin is the surface that drives it.
-- **`app.st4ck.io` paid platform** — adds healing, knowledge base, coverage analytics, security test generation, and multi-project orchestration on top. → [st4ck.io](https://st4ck.io)
+- **`st4ck-lite` / local OSS** — no account, service, or MCP required. The current alpha ships local PRD skills plus agent-driven recording and deterministic md replay. Basic local component authoring and reuse belongs on this OSS surface too; its local registry has not shipped yet. → [github.com/edo-ceder/st4ck-lite](https://github.com/edo-ceder/st4ck-lite)
+- **Full st4ck** — this open-source plugin paired with an `app.st4ck.io` workspace. The plugin supplies the agent-and-human lifecycle surface; the workspace supplies MCP services for persistent lineage, attestation, a signed shared component registry, intent binding, impact/coverage, healing, and collaboration. → [st4ck.io](https://st4ck.io)
+
+Basic local component authoring is not intended to be a paywall. Full st4ck's differentiation is the compounding, server-backed test system: reusable components tied to signed lineage and intent, required attestations and review gates, team knowledge, analytics, healing, and agentic orchestration.
 
 ---
 
@@ -93,7 +94,7 @@ st4ck ships in three tiers. This plugin is the middle one.
 - `.claude-plugin/marketplace.json` — Claude Code marketplace metadata
 - `st4ck/skills/` — the bundled skill set (lifecycle + PRD authoring)
 - `st4ck/commands/` — slash command aliases
-- `st4ck/agents/` — role-constrained subagents (code, QA, PRD reviewers)
+- `st4ck/agents/` — role-specific subagents (code, QA, PRD reviewers)
 - `docs/` — methodology + architecture documentation
 - `poc/` — proof-of-concept work feeding back into the plugin
 
@@ -120,7 +121,7 @@ node scripts/validate-plugin.mjs
 
 The plugin version lives only in `st4ck/.claude-plugin/plugin.json`. Anthropic recommends avoiding a duplicate marketplace-entry version; one declaration makes release and cache behavior unambiguous. The contract check compares against `origin/main` by default; set `ST4CK_PLUGIN_BASE_REF=<ref>` when validating against another release base.
 
-Requires an `app.st4ck.io` workspace for the lifecycle skills' MCP server connections. Without one, you can still use the PRD authoring skills (file-only) and the recording subset.
+The MCP-backed lifecycle skills require an `app.st4ck.io` workspace. Without one, the shared local surface remains usable: file-only PRD authoring, agent-driven recording, and deterministic replay. Basic local component authoring also belongs on the local OSS surface, although the current Lite alpha has not yet shipped its local registry.
 
 ---
 

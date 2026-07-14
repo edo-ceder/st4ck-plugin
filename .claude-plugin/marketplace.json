@@ -5,12 +5,12 @@
     "email": "hello@st4ck.io"
   },
   "metadata": {
-    "description": "st4ck plugin for Claude Code — role-separated implementation flow with structural quality enforcement"
+    "description": "Agent-and-human lifecycle surface for app.st4ck.io workspaces, with deterministic QA and server-enforced test lineage and attestation"
   },
   "plugins": [
     {
       "name": "st4ck",
-      "description": "Role-separated implementation flow for st4ck projects — from requirements through code, QA, and delivery with structural enforcement of quality via agent role separation and tool restriction.",
+      "description": "Agent-and-human product lifecycle for app.st4ck.io workspaces, with role-specific workflows, deterministic QA, and server-enforced test lineage and attestation.",
       "author": {
         "name": "st4ck",
         "email": "hello@st4ck.io"
