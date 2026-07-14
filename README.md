@@ -119,7 +119,7 @@ claude plugin validate ./st4ck
 node scripts/validate-plugin.mjs
 ```
 
-The plugin version lives only in `st4ck/.claude-plugin/plugin.json`. Anthropic recommends avoiding a duplicate marketplace-entry version; one declaration makes release and cache behavior unambiguous. The contract check compares against `origin/main` by default; set `ST4CK_PLUGIN_BASE_REF=<ref>` when validating against another release base.
+The plugin version lives only in `st4ck/.claude-plugin/plugin.json`. Anthropic recommends avoiding a duplicate marketplace-entry version; one declaration makes release and cache behavior unambiguous. The contract check compares against `origin/main` by default. Fetch that ref first, or set `ST4CK_PLUGIN_BASE_REF=<existing-ref>` when validating a fork, shallow checkout, or another release base; a missing ref fails with an actionable error instead of an opaque Git failure.
 
 The MCP-backed lifecycle skills require an `app.st4ck.io` workspace. Without one, the shared local surface remains usable: file-only PRD authoring, agent-driven recording, and deterministic replay. Basic local component authoring also belongs on the local OSS surface, although the current Lite alpha has not yet shipped its local registry.
 

@@ -40,6 +40,17 @@ function git(args) {
   }
 }
 
+function requireBaseRef(ref) {
+  try {
+    git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]);
+  } catch {
+    throw new Error(
+      `release base ref "${ref}" is unavailable; fetch that ref or run ` +
+      `ST4CK_PLUGIN_BASE_REF=<existing-ref> node scripts/validate-plugin.mjs`,
+    );
+  }
+}
+
 function parseSemver(version) {
   const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/.exec(version);
   if (!match) return null;
@@ -81,6 +92,8 @@ check(isGreaterVersion("1.2.3-rc.2+build.7", "1.2.3-rc.1"),
 check(isGreaterVersion("1.2.3", "1.2.3-rc.2"),
   "a SemVer release must sort after its prereleases");
 
+requireBaseRef(baseRef);
+
 const changedTracked = git(["diff", "--name-only", baseRef, "--", "st4ck"])
   .trim().split("\n").filter(Boolean);
 const changedUntracked = git(["ls-files", "--others", "--exclude-standard", "--", "st4ck"])
@@ -88,7 +101,14 @@ const changedUntracked = git(["ls-files", "--others", "--exclude-standard", "--"
 const payloadChanges = [...new Set([...changedTracked, ...changedUntracked])];
 
 if (payloadChanges.length > 0) {
-  const baseManifest = JSON.parse(git(["show", `${baseRef}:${manifestPath}`]));
+  let baseManifest;
+  try {
+    baseManifest = JSON.parse(git(["show", `${baseRef}:${manifestPath}`]));
+  } catch (error) {
+    throw new Error(
+      `release base ref "${baseRef}" does not provide a readable ${manifestPath}: ${error.message}`,
+    );
+  }
   check(manifest.version !== baseManifest.version,
     `plugin payload changed without a version bump from ${baseManifest.version}: ${payloadChanges.join(", ")}`);
   check(isGreaterVersion(manifest.version, baseManifest.version),
