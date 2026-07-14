@@ -399,7 +399,7 @@ Some handlers also discriminate on pointer-event ordering or timing. Only after 
 npx st4ck@latest browse click_native -s foo --locator-by css --locator-value ".bubble-element.Button" --pointer-sequence
 ```
 
-The launch-level `--platform=auto|bubble|...` flag is forwarded for forward compatibility only. Runner alpha.58 does not use it to change click behavior, so do not rely on this launch flag today.
+The launch-level `--platform=auto|bubble|...` flag is forwarded for forward compatibility only. The current runner does not use it to change click behavior, so do not rely on this launch flag today.
 
 ## When to use `--record` vs not
 
