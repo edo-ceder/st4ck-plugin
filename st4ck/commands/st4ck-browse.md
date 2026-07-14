@@ -179,7 +179,7 @@ npx st4ck@latest browse check_box --session foo --locator-by label --locator-val
 npx st4ck@latest browse hover --session foo --locator-by testid --locator-value "tooltip-trigger"
 
 # upload (--file repeats for multi-file)
-npx st4ck@latest browse upload --session foo --locator-by testid --locator-value "file-input" --file /abs/path/photo.jpg
+npx st4ck@latest browse upload --session foo --locator-by testid --locator-value "file-input" --file fixtures/photo.jpg
 
 # wait_until — JS expression polled until truthy or --timeout-ms expires
 npx st4ck@latest browse wait_until --session foo --js "document.querySelectorAll('[data-row]').length > 0" --timeout-ms 10000
@@ -190,6 +190,8 @@ npx st4ck@latest browse evaluate --session foo --js "document.title"
 # branch — conditional dispatch; takes a single --json blob
 npx st4ck@latest browse branch --session foo --json '{"condition":{"kind":"visible","locator":{"by":"text","value":"Welcome"}},"then":[],"else":[{"primitive":"click","args":{"locator":{"by":"role","value":"button","options":{"name":"Sign in"}}}}]}'
 ```
+
+Upload inputs must resolve inside the repository working directory unless `ST4CK_ALLOWED_FILE_ROOTS` was explicitly set before launch. Prefer repo-relative test fixtures.
 
 #### Low-token discovery and deterministic verification
 
@@ -258,15 +260,16 @@ npx st4ck@latest browse snapshot --session foo
 
 # Screenshot to disk — for visual audits ("does this card render right at 360px?").
 # Pair with the agent's Read tool: capture, then read the PNG to inspect visually.
-npx st4ck@latest browse screenshot --session foo --out /tmp/audit.png
-npx st4ck@latest browse screenshot --session foo --out /tmp/full.png --full-page
-npx st4ck@latest browse screenshot --session foo --out /tmp/clip.jpg --type jpeg --quality 85 --clip 0,0,400,300
+mkdir -p .st4ck/screenshots
+npx st4ck@latest browse screenshot --session foo --out .st4ck/screenshots/audit.png
+npx st4ck@latest browse screenshot --session foo --out .st4ck/screenshots/full.png --full-page
+npx st4ck@latest browse screenshot --session foo --out .st4ck/screenshots/clip.jpg --type jpeg --quality 85 --clip 0,0,400,300
 
 # Locator-driven screenshot — capture just one element by accessible locator.
 # Beats pixel `--clip` for visual diffs because the locator survives layout shifts.
 # Same locator flags as click/fill: --locator-by/--locator-value/--name + optional --scope-by.
-npx st4ck@latest browse screenshot --session foo --out /tmp/btn.png --locator-by role --locator-value button --name "Save"
-npx st4ck@latest browse screenshot --session foo --out /tmp/card.png --locator-by testid --locator-value "user-card"
+npx st4ck@latest browse screenshot --session foo --out .st4ck/screenshots/btn.png --locator-by role --locator-value button --name "Save"
+npx st4ck@latest browse screenshot --session foo --out .st4ck/screenshots/card.png --locator-by testid --locator-value "user-card"
 ```
 
 `snapshot` / `url` / `page-errors` / `screenshot` are introspection-only — they don't land in the captured md file. Use `snapshot` liberally between actions, `page-errors` whenever the page behaves blank or unresponsive, and `screenshot` for visual audit / debugging when "evaluate-only" leaves you guessing whether layout is right.

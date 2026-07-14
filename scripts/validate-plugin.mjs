@@ -150,5 +150,9 @@ check(/forward compatibility only/i.test(browseCommand) && /do not rely on this 
   "st4ck-browse must state that launch --platform cannot be relied on today");
 check(!/\$SB_TOKEN|--local-storage[^\n]*auth-token/i.test(browseCommand),
   "auth tokens must never be passed through process arguments");
+check(!/browse screenshot[^\n]*--out\s+\/tmp\//i.test(browseCommand),
+  "screenshot examples must stay inside the default allowed repository root");
+check(!/browse upload[^\n]*--file\s+\/(?:abs|tmp)\//i.test(browseCommand),
+  "upload examples must stay inside the default allowed repository root");
 
 process.stdout.write(`ok: st4ck plugin ${manifest.version} manifests and Browse contract are coherent\n`);
