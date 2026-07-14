@@ -1,0 +1,52 @@
+name: Validate plugin
+
+on:
+  pull_request:
+    paths:
+      - ".claude-plugin/**"
+      - ".github/workflows/validate-plugin.yml"
+      - "README.md"
+      - "scripts/**"
+      - "st4ck/**"
+  push:
+    branches:
+      - main
+    paths:
+      - ".claude-plugin/**"
+      - ".github/workflows/validate-plugin.yml"
+      - "README.md"
+      - "scripts/**"
+      - "st4ck/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      ST4CK_PLUGIN_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install the supported Claude validator
+        run: npm install --global @anthropic-ai/claude-code@2.1.78
+
+      - name: Validate marketplace and plugin payload
+        run: |
+          claude plugin validate .
+          claude plugin validate ./st4ck
+
+      - name: Validate version and Browse contracts
+        run: |
+          node --check scripts/validate-plugin.mjs
+          node scripts/validate-plugin.mjs
+
+      - name: Check patch whitespace
+        run: git diff --check "$ST4CK_PLUGIN_BASE_REF"...HEAD

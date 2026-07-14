@@ -1,6 +1,6 @@
 ---
 description: Phase 5 §5.2 — agent-driven test impact analysis. Reads the local git diff, surfaces every QA test whose components cite the changed lines, queues test_design_change dev_tasks for QA. Optionally generates proposed component updates with --propose.
-argument-hint: [--base <branch>] [--staged] [--propose] [--limit <N>]
+argument-hint: "[--base <branch>] [--staged] [--propose] [--limit <N>]"
 ---
 
 # /st4ck:impact

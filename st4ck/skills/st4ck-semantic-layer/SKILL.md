@@ -1,6 +1,6 @@
 ---
 name: st4ck-semantic-layer
-description: Use when authoring or updating a st4ck project's MCP semantic-layer docs (under the project's st4ck/docs/MCP — the business-language-to-data guide an LLM reads before answering questions about that project's live data). Trigger after any data-model change (new/renamed field, option set/enum, table, or workflow), or when a glossary/metric/gotcha needs adding or correcting. Works for any st4ck project on any data source (Bubble, Supabase, or code). Keeps the layer grounded in the real schema, not guessed, and stamps each data file `source: mcp_server` so the Claude connector's get_project_guide delivers it.
+description: "Use when authoring or updating a st4ck project's MCP semantic-layer docs (under the project's st4ck/docs/MCP — the business-language-to-data guide an LLM reads before answering questions about that project's live data). Trigger after any data-model change (new/renamed field, option set/enum, table, or workflow), or when a glossary/metric/gotcha needs adding or correcting. Works for any st4ck project on any data source (Bubble, Supabase, or code). Keeps the layer grounded in the real schema, not guessed, and stamps each data file `source: mcp_server` so the Claude connector's get_project_guide delivers it."
 ---
 
 # Maintaining a st4ck Project's Semantic Layer
