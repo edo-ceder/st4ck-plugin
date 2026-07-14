@@ -1,6 +1,6 @@
 {
   "name": "st4ck",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Agent-and-human product lifecycle for app.st4ck.io workspaces, with role-specific workflows, deterministic QA, and server-enforced test lineage and attestation.",
   "author": {
     "name": "st4ck",
