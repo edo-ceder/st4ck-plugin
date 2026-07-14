@@ -1,6 +1,6 @@
 ---
 description: Drive a real browser one IPC primitive at a time via the `st4ck browse` CLI. Each subcommand is one Bash invocation; the wrapper hides the runner + FIFO behind the scenes. Multi-session out of the box. Optional `--record` saves the trace as a deterministic md test you can replay with `st4ck run`.
-argument-hint: <url> [--session <name>] [--record [--out <path>]] [--instruction "<text>"] [--platform=<v>] [--device "<name>"] [--viewport <WxH>] [--locale <bcp47>] [--timezone-id <iana>] [--color-scheme <v>] [--reduced-motion <v>] [--geolocation <lat,lon>] [--context-options <json>] [--headless] [--no-blank-page-check]
+argument-hint: <url> [--session <name>] [--record [--out <path>]] [--instruction "<text>"] [--storage-state <file>] [--device "<name>"] [--viewport <WxH>] [--locale <bcp47>] [--timezone-id <iana>] [--color-scheme <v>] [--reduced-motion <v>] [--geolocation <lat,lon>] [--context-options <json>] [--headless] [--no-blank-page-check]
 ---
 
 # /st4ck:browse
@@ -9,7 +9,7 @@ You drive a real browser one primitive at a time, one Bash command per primitive
 
 The captured trace (when you launch with `--record`) is a deterministic markdown file. Replay it later with zero LLM cost via `npx st4ck@latest run <path.md>`.
 
-> **Version.** Examples use `npx st4ck@latest` — npm always serves the current release. To pin (CI reproducibility, rolling back to a known-good version), substitute an explicit version (e.g. `npx st4ck@0.2.0-alpha.1`); see `npm view st4ck versions` for the list. The plugin manifest schema has no version-pinning field, so the docs are the only place pinning happens.
+> **Version.** Examples use `npx st4ck@latest` — npm always serves the current release. To pin (CI reproducibility, rolling back to a known-good version), substitute an explicit version (e.g. `npx st4ck@0.2.0-alpha.1`); see `npm view st4ck versions` for the list. The Claude plugin cannot pin its npm dependency, so CLI pinning happens in the command you run.
 
 ## Lifecycle — launch, act, close
 
@@ -46,7 +46,7 @@ Returns the `runner_ready` envelope:
 | `--record` | Save the captured primitive trace to disk on close. Without this, the session is ephemeral. |
 | `--out <path>` | Where to write the trace (only meaningful with `--record`). |
 | `--instruction "<text>"` | Human-readable journey description recorded in the md file's front matter. |
-| `--platform=<v>` | Forwarded to the runner. Recognized values: `auto` \| `web` \| `bubble` \| `retool` \| `webflow` \| `n8n` \| `wix-velo` \| `glide` \| `flutterflow`. When the runner ships per-call reactive-UI flag defaults (forthcoming), this flag flips them on. |
+| `--storage-state <file>` | Seed cookies and localStorage before the first navigation. Auth state must use a permission-restricted temporary file. |
 | `--headless` | Run Chromium headless. Default headed. |
 | `--blank-page-delay <ms>` | How long to wait before checking for a blank-rendered page (default 4000). |
 | `--no-blank-page-check` | Skip the blank-page heuristic entirely. |
@@ -103,6 +103,23 @@ npx st4ck@latest browse launch <url> --session foo -- --some-future-runner-flag 
 
 Without `--`, unknown flags exit `5` (bad_input) — typos surface instead of being silently ignored.
 
+### Auth injection — skip repeated login drives
+
+For ad-hoc driving of an auth-gated app, mint the session with the app's own admin/service API, then inject it **before the first navigation**. A storage-state file contains impersonation-capable secrets; treat it like a password and never commit, log, or retain it.
+
+```bash
+# Run this prelude and launch in one Bash invocation so cleanup always runs.
+AUTH_STATE="$(mktemp "${TMPDIR:-/tmp}/st4ck-auth.XXXXXX")"
+chmod 600 "$AUTH_STATE"
+trap 'rm -f "$AUTH_STATE"' EXIT
+
+# Mint the session and write valid Playwright storageState JSON to $AUTH_STATE
+# without printing its contents, then launch with only the file path in argv.
+npx st4ck@latest browse launch https://app.example.com -s authed --storage-state "$AUTH_STATE"
+```
+
+The runner consumes the file before page load, and the trap deletes it when the launch invocation returns. An `init-script` or later `evaluate` is too late for apps that read auth during startup. `--local-storage key=value` is suitable only for non-secret seed data: never pass an auth token through it, because even environment-variable expansion exposes the value in process arguments. Authored tests still establish their state through the UI.
+
 ### 2. Act — one Bash command per primitive
 
 After launch you alternate `snapshot` → action → `snapshot` until the page state matches what you came to verify. Every command takes `-s <name>` (omit for the `default` session).
@@ -125,10 +142,11 @@ Locator flags are shared by `click` / `fill` / `select` / `hover` / `check_box` 
 
 | Flag | Purpose |
 |---|---|
-| `--locator-by <kind>` | One of `testid` \| `role` \| `label` \| `placeholder` \| `text` \| `css` \| `xpath`. |
+| `--locator-by <kind>` | One of `testid` \| `role` \| `label` \| `placeholder` \| `text` \| `css`. |
 | `--locator-value <v>` | The value matched against `--locator-by` (selector text, role string, label text, etc.). `--selector` is an alias. |
 | `--name "<accname>"` | Accessible-name option (only with `--locator-by role`). |
 | `--exact` | String equality on `--locator-value` (default is substring). |
+| `--locator-index <n>` | Select the zero-based Nth match. `interactables` includes this in handles when role/name repeats. |
 | `--scope-by <kind>` + `--scope-value <v>` | Constrain the locator to a container element (e.g. `--scope-by role --scope-value dialog`). |
 | `--timeout-ms <n>` | Override the default 30s actionability timeout. |
 
@@ -172,6 +190,39 @@ npx st4ck@latest browse evaluate --session foo --js "document.title"
 # branch — conditional dispatch; takes a single --json blob
 npx st4ck@latest browse branch --session foo --json '{"condition":{"kind":"visible","locator":{"by":"text","value":"Welcome"}},"then":[],"else":[{"primitive":"click","args":{"locator":{"by":"role","value":"button","options":{"name":"Sign in"}}}}]}'
 ```
+
+#### Low-token discovery and deterministic verification
+
+Use these focused operations instead of dumping the page or writing custom `evaluate` JavaScript when the question is local:
+
+```bash
+# Compact visible controls, with ready-to-paste locator handles.
+npx st4ck@latest browse interactables -s foo --filter buttons --grep "save|submit" --max 20
+
+# Check uniqueness before acting; returns count, ambiguous, and matches.
+npx st4ck@latest browse locate -s foo --locator-by role --locator-value button --name "Save"
+
+# Read only one target's text, without a snapshot/model-grep round trip.
+npx st4ck@latest browse get-text -s foo --locator-by css --locator-value ".toast" --format result
+
+# Make the expected text a deterministic exit-0/exit-1 assertion.
+npx st4ck@latest browse assert-contains -s foo --locator-by css --locator-value ".toast" --contains "Saved"
+
+# Scroll the document, a nested scroller, or one element into view.
+npx st4ck@latest browse scroll -s foo --to bottom
+npx st4ck@latest browse scroll -s foo --locator-by css --locator-value ".left-panel" --to bottom
+npx st4ck@latest browse scroll -s foo --locator-by role --locator-value button --name "Submit" --to element
+
+# After opening a reactive dropdown, fill its currently-focused search field.
+npx st4ck@latest browse fill -s foo --focused --text "Hebrew"
+
+# Wait for the first delayed URL/body change after an asynchronous submit.
+npx st4ck@latest browse click -s foo --locator-by role --locator-value button --name "Submit" --settle
+```
+
+`assert-contains` also accepts `--equals` or `--matches` when exact text or a regex is the real contract. `click --settle` stops at the first URL/body change; follow it with a final-state `wait_until` or assertion when intermediate renders are possible.
+
+Use `--format result` for a bare focused read. For repeated scripted operations, `--format quiet` keeps only status and key evidence. Keep the default envelope while diagnosing failures.
 
 #### Text-disambiguation actions
 
@@ -323,6 +374,9 @@ npx st4ck@latest browse click --session alice --locator-by testid --locator-valu
 # List active sessions.
 npx st4ck@latest browse list
 
+# Conservatively delete only dead/corrupt sessions; alive/unknown are kept.
+npx st4ck@latest browse prune
+
 # Tear down.
 npx st4ck@latest browse close --session alice
 npx st4ck@latest browse close --session bob
@@ -330,22 +384,22 @@ npx st4ck@latest browse close --session bob
 
 Each `-s <name>` routes to its own runner + browser context. Cross-session orchestration in one flow is just choosing the right `-s` per command. Sessions live under `~/.st4ck/sessions/<name>/`; `list` prints alive vs stale state.
 
-## Reactive-UI handling
+## Reactive-UI click escalation
 
-Three classes of UI need pointer-event chains rather than synthesized clicks: **Radix UI** dropdowns / popovers / menus / context menus, **Headless UI** menus + listboxes, **MUI menus** with custom-styled triggers, **shadcn/ui** components (Radix root underneath), and most no-code platforms (**Bubble**, **Retool**, **Webflow**, **n8n**, **Wix Velo**, **Glide**, **FlutterFlow**).
-
-Symptom: `click` returns `status: "passed"` but the UI doesn't react. The result envelope's `evidence.result` carries `body_changed: false` — confirming the click hit a no-op.
-
-**Fix today (the canonical surface):** launch with `--platform=<v>`. The wrapper forwards the flag to the runner, which (when supported) flips the per-call reactive flags (`dispatch_chain`, `dispatch_events`, `atomic`) on as defaults for the whole session.
+Use standard `click` first; it is the cheaper default for ordinary buttons and links. If the target is document-delegated, gates on `event.isTrusted`, or `click` passes without triggering the expected UI, retry that locator with `click_native`. It dispatches a real-mouse click through CDP:
 
 ```bash
-npx st4ck@latest browse launch https://app.bubbleapps.io --platform=bubble --session foo
-npx st4ck@latest browse launch https://radix-app.example.com --platform=auto --session foo
+npx st4ck@latest browse click -s foo --locator-by role --locator-value button --name "Open menu"
+npx st4ck@latest browse click_native -s foo --locator-by role --locator-value button --name "Open menu"
 ```
 
-Recognized values: `auto` | `web` | `bubble` | `retool` | `webflow` | `n8n` | `wix-velo` | `glide` | `flutterflow`. With `auto`, the runner detects via response headers > DOM probes > URL pattern.
+Some handlers also discriminate on pointer-event ordering or timing. Only after plain `click_native` fails, opt into its realistic pointer trail:
 
-Per-call `--dispatch-chain` / `--dispatch-events` / `--atomic` flags on individual subcommands are not yet exposed in the wrapper CLI; use session-level `--platform` for now. If a single flow mixes platforms and you need per-call control, file an issue and we'll prioritize the per-op flags.
+```bash
+npx st4ck@latest browse click_native -s foo --locator-by css --locator-value ".bubble-element.Button" --pointer-sequence
+```
+
+The launch-level `--platform=auto|bubble|...` flag is forwarded for forward compatibility only. Runner alpha.58 does not use it to change click behavior, so do not rely on this launch flag today.
 
 ## When to use `--record` vs not
 
@@ -359,12 +413,12 @@ Recordings produced by `--record` live wherever `--out` says (or `.st4ck/recordi
 
 ## Driving strategy
 
-1. **Snapshot first.** `browse snapshot` before doing anything to discover stable locators on the live page. Don't guess from the URL.
+1. **Orient, then narrow.** Use `browse snapshot` once for page semantics; use `interactables`, `locate`, and `get-text` for repeated local discovery. Re-snapshot after navigation or structural UI changes; never reuse stale locators blindly.
 2. **Verify each primitive live.** One command, read the response, reason about it, send the next. Never batch primitives blind — that defeats the point of live verification.
 3. **Wait deliberately.** Playwright's auto-wait covers most actionability. Add an explicit `wait_until` only when crossing a structural transition (after a click that triggers navigation, after a modal opens, after an async list re-renders).
 4. **Prefer accessible locators.** `testid` > `role+name` > `label` > `placeholder` > `text` > `css`. The locator priority ladder gives you free Tier-1 self-heal on replay.
 5. **Don't navigate via URL when a click is what should be verified.** Jumping via `browse navigate` skips the very thing the test exists to cover.
-6. **`evaluate` is for reads, not mutations.** Mutating page state via evaluate makes the recording brittle on replay.
+6. **Prefer purpose-built reads and assertions.** Use `get-text`, `assert-contains`, and `locate` before `evaluate`. If no primitive fits, `evaluate` is for reads, not mutations; page-state mutation makes the recording brittle on replay.
 
 ## Click change-evidence
 
@@ -380,7 +434,7 @@ Every successful `click` returns evidence of whether the click actually changed 
 }
 ```
 
-`body_changed: false` after a click that you expected to do something is a signal that the click hit a no-op element (e.g. a Radix dropdown trigger that needs `--platform=auto`, a button covered by an invisible overlay, an event handler that didn't bind). Use it to distinguish "click succeeded mechanically" from "click changed the page."
+`body_changed: false` after a click that you expected to do something is a signal that the click may have hit a document-delegated or trust-gated target; retry with `click_native`. It can also mean an invisible overlay or an unbound handler, so inspect the page if the native click also has no effect. Use the evidence to distinguish "click succeeded mechanically" from "click changed the page."
 
 ## Fail-fast on 0-match locators
 
@@ -424,8 +478,9 @@ Zero LLM, pure Playwright execution, ~10× faster than the recording, determinis
 ## Discoverability
 
 ```bash
-npx st4ck@latest browse              # prints subcommand usage
-npx st4ck@latest browse launch --help # (planned)
+npx st4ck@latest browse                       # list actions and common flags
+npx st4ck@latest browse launch --help         # launch/auth flags and examples
+npx st4ck@latest browse interactables --help  # any `browse <op> --help` prints that op's flags and examples
 ```
 
 The runtime registry of primitive names + per-primitive flag shapes is the source of truth. If anything in this skill drifts from the wrapper's actual flag parser, the wrapper wins — open an issue.

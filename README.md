@@ -110,6 +110,16 @@ In Claude Code:
 /plugin install st4ck@st4ck-marketplace
 ```
 
+Before releasing a plugin update, validate both Claude manifests/frontmatter and the local Browse/version contract:
+
+```bash
+claude plugin validate .
+claude plugin validate ./st4ck
+node scripts/validate-plugin.mjs
+```
+
+The plugin version lives only in `st4ck/.claude-plugin/plugin.json`. Anthropic recommends avoiding a duplicate marketplace-entry version; one declaration makes release and cache behavior unambiguous. The contract check compares against `origin/main` by default; set `ST4CK_PLUGIN_BASE_REF=<ref>` when validating against another release base.
+
 Requires an `app.st4ck.io` workspace for the lifecycle skills' MCP server connections. Without one, you can still use the PRD authoring skills (file-only) and the recording subset.
 
 ---
