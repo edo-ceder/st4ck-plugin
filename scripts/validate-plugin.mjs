@@ -121,33 +121,80 @@ function extractBrowseCommands(text) {
 
 function shellTokens(command, label) {
   const tokens = [];
-  let token = "";
+  let value = "";
   let tokenStarted = false;
   let quote = null;
+  let expandableSegment = "";
+  let mayExpand = false;
+  let mayExecute = false;
+
+  const flushExpandableSegment = (mode = "unquoted") => {
+    const controlSegment = expandableSegment.replace(/<[a-z][a-z0-9_-]*>/gi, "");
+    const commandSubstitution = /\$\(|`/.test(expandableSegment);
+    const shellControl = mode === "unquoted" && /[<>();&|]/.test(controlSegment);
+    if (/\$/.test(expandableSegment)
+      || /`/.test(expandableSegment)
+      || /%[^%]+%/.test(expandableSegment)
+      || /![^!]+!/.test(expandableSegment)
+      || (mode === "unquoted" && /[{}<>();&|]/.test(controlSegment))) {
+      mayExpand = true;
+    }
+    if (commandSubstitution || shellControl) mayExecute = true;
+    expandableSegment = "";
+  };
 
   const pushToken = () => {
     if (!tokenStarted) return;
-    tokens.push(token);
-    token = "";
+    flushExpandableSegment();
+    tokens.push({ value, mayExpand, mayExecute });
+    value = "";
     tokenStarted = false;
+    mayExpand = false;
+    mayExecute = false;
   };
 
-  for (const character of command) {
+  for (let index = 0; index < command.length; index += 1) {
+    const character = command[index];
+
     if (quote) {
-      if (character === quote) quote = null;
-      else token += character;
+      if (quote === '"' && character === "\\" && index + 1 < command.length
+        && /[$`"\\\n]/.test(command[index + 1])) {
+        // Preserve the path spelling for cross-platform checks, but do not
+        // treat a shell-escaped metacharacter as executable expansion syntax.
+        flushExpandableSegment("double");
+        value += character + command[index + 1];
+        index += 1;
+      } else if (character === quote) {
+        const closedQuote = quote;
+        quote = null;
+        if (closedQuote === '"') flushExpandableSegment("double");
+      } else {
+        value += character;
+        if (quote === '"') expandableSegment += character;
+      }
       tokenStarted = true;
     } else if (character === "#" && !tokenStarted) {
       // In shell command examples an unquoted # at a token boundary starts a
       // comment; prose after it may contain apostrophes that are not quoting.
       break;
     } else if (character === "'" || character === '"') {
+      if (expandableSegment.endsWith("$")) mayExpand = true;
+      flushExpandableSegment("unquoted");
       quote = character;
+      tokenStarted = true;
+    } else if (character === "\\" && index + 1 < command.length) {
+      // Keep backslashes so Windows absolute/traversal checks still see them,
+      // while separating an escaped metacharacter from expandable syntax.
+      flushExpandableSegment("unquoted");
+      value += character + command[index + 1];
+      index += 1;
       tokenStarted = true;
     } else if (/\s/.test(character)) {
       pushToken();
     } else {
-      token += character;
+      if (!tokenStarted && character === "~") mayExpand = true;
+      value += character;
+      expandableSegment += character;
       tokenStarted = true;
     }
   }
@@ -160,25 +207,28 @@ function shellTokens(command, label) {
 function commandFlagValues(tokens, flag, label, command) {
   const values = [];
   for (let index = 0; index < tokens.length; index += 1) {
-    if (tokens[index] === flag) {
-      const value = tokens[index + 1];
-      check(value !== undefined && value.length > 0,
+    if (tokens[index].value === flag) {
+      const valueToken = tokens[index + 1];
+      check(valueToken !== undefined && valueToken.value.length > 0,
         `${label} contains ${flag} without a path value: ${command}`);
-      values.push(value);
+      check(!valueToken.value.startsWith("-")
+        || /[./\\]/.test(valueToken.value.replace(/^-+/, "")),
+        `${label} contains ${flag} without a path value: ${command}`);
+      values.push(valueToken);
       index += 1;
-    } else if (tokens[index].startsWith(`${flag}=`)) {
-      const value = tokens[index].slice(flag.length + 1);
+    } else if (tokens[index].value.startsWith(`${flag}=`)) {
+      const value = tokens[index].value.slice(flag.length + 1);
       check(value.length > 0, `${label} contains ${flag}= without a path value: ${command}`);
-      values.push(value);
+      values.push({ value, mayExpand: tokens[index].mayExpand });
     }
   }
   return values;
 }
 
-function escapesDefaultRepositoryRoot(value) {
+function escapesDefaultRepositoryRoot({ value, mayExpand }) {
+  if (mayExpand) return true;
   if (path.posix.isAbsolute(value) || path.win32.isAbsolute(value)) return true;
   if (/^[A-Za-z]:/.test(value)) return true;
-  if (/^~/.test(value) || /[$`]/.test(value) || /%[^%]+%/.test(value)) return true;
   let depth = 0;
   for (const component of value.split(/[\\/]+/)) {
     if (!component || component === ".") continue;
@@ -195,9 +245,11 @@ function escapesDefaultRepositoryRoot(value) {
 function validateDocumentedFilePaths(label, surface) {
   for (const command of extractBrowseCommands(surface)) {
     const tokens = shellTokens(command, label);
-    const browseIndex = tokens.indexOf("browse");
-    const op = tokens[browseIndex + 1];
+    const browseIndex = tokens.findIndex((token) => token.value === "browse");
+    const op = tokens[browseIndex + 1]?.value;
     check(browseIndex >= 0, `${label} contains a malformed Browse command: ${command}`);
+    check(tokens.every((token) => !token.mayExecute),
+      `${label} contains executable shell expansion or control syntax: ${command}`);
     if (!op) continue;
     const pathFlags = op === "screenshot"
       ? ["--out"]
@@ -205,9 +257,9 @@ function validateDocumentedFilePaths(label, surface) {
         ? ["--file"]
         : [];
     for (const flag of pathFlags) {
-      for (const value of commandFlagValues(tokens, flag, label, command)) {
-        check(!escapesDefaultRepositoryRoot(value),
-          `${label} teaches a ${op} ${flag} path outside the default allowed repository root: ${value}`);
+      for (const valueToken of commandFlagValues(tokens, flag, label, command)) {
+        check(!escapesDefaultRepositoryRoot(valueToken),
+          `${label} teaches a ${op} ${flag} path outside the default allowed repository root: ${valueToken.value}`);
       }
     }
   }
@@ -237,6 +289,40 @@ validateDocumentedFilePaths("repository-relative path fixture", relativePathFixt
 validateDocumentedFilePaths(
   "dash-prefixed relative filename fixture",
   "st4ck browse screenshot --out --trace.png",
+);
+validateDocumentedFilePaths(
+  "single-quoted literal filename fixture",
+  "st4ck browse upload --file 'fixtures/price$1.png'",
+);
+validateDocumentedFilePaths(
+  "escaped literal filename fixture",
+  String.raw`st4ck browse upload --file fixtures/\$HOME.png`,
+);
+validateDocumentedFilePaths(
+  "double-quoted escaped literal filename fixture",
+  String.raw`st4ck browse upload --file "fixtures/\$HOME.png"`,
+);
+validateDocumentedFilePaths(
+  "explicit equals dash filename fixture",
+  "st4ck browse screenshot --out=-h",
+);
+validateDocumentedFilePaths(
+  "single-quoted control literal fixture",
+  "st4ck browse upload --file 'fixtures/price;1.png'",
+);
+validateDocumentedFilePaths(
+  "documentation placeholder fixture",
+  "st4ck browse launch <url> --session <slug>",
+);
+expectPathValidationFailure(
+  "missing screenshot path fixture",
+  "st4ck browse screenshot --out --full-page",
+  /without a path value/,
+);
+expectPathValidationFailure(
+  "short option missing screenshot path fixture",
+  "st4ck browse screenshot --out -h",
+  /without a path value/,
 );
 expectPathValidationFailure(
   "POSIX screenshot fixture",
@@ -272,6 +358,46 @@ expectPathValidationFailure(
   "Windows drive-relative upload fixture",
   String.raw`st4ck browse upload --file C:tmp\fixture.png`,
   /upload --file path outside/,
+);
+expectPathValidationFailure(
+  "brace expansion screenshot fixture",
+  "st4ck browse screenshot --out {..,fixtures}/outside.png",
+  /screenshot --out path outside/,
+);
+expectPathValidationFailure(
+  "mixed-quote brace expansion screenshot fixture",
+  'st4ck browse screenshot --out {..,"fixtures"}/outside.png',
+  /screenshot --out path outside/,
+);
+expectPathValidationFailure(
+  "ANSI-C quoted screenshot fixture",
+  "st4ck browse screenshot --out $'../outside.png'",
+  /screenshot --out path outside/,
+);
+expectPathValidationFailure(
+  "process substitution screenshot fixture",
+  "st4ck browse screenshot --out <(printf-fixture)",
+  /executable shell expansion or control syntax/,
+);
+expectPathValidationFailure(
+  "CMD delayed expansion upload fixture",
+  String.raw`st4ck browse upload --file !TEMP!\fixture.png`,
+  /upload --file path outside/,
+);
+expectPathValidationFailure(
+  "shell redirection fixture",
+  "st4ck browse screenshot --out artifacts/x.png > ../outside.txt",
+  /executable shell expansion or control syntax/,
+);
+expectPathValidationFailure(
+  "non-path command substitution fixture",
+  "st4ck browse screenshot --out artifacts/x.png $(touch ../outside)",
+  /executable shell expansion or control syntax/,
+);
+expectPathValidationFailure(
+  "empty operation redirection fixture",
+  'st4ck browse "" > ../outside.txt',
+  /executable shell expansion or control syntax/,
 );
 
 requireBaseRef(baseRef);
