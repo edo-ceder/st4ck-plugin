@@ -8,6 +8,7 @@ on:
       - "README.md"
       - "scripts/**"
       - "st4ck/**"
+      - "st4ck-managed-slack/**"
   push:
     branches:
       - main
@@ -17,6 +18,7 @@ on:
       - "README.md"
       - "scripts/**"
       - "st4ck/**"
+      - "st4ck-managed-slack/**"
 
 permissions:
   contents: read
@@ -42,6 +44,7 @@ jobs:
         run: |
           claude plugin validate .
           claude plugin validate ./st4ck
+          claude plugin validate ./st4ck-managed-slack
 
       - name: Validate version and Browse contracts
         run: |

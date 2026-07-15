@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "st4ck-managed-connector": {
+      "type": "http",
+      "url": "https://app.st4ck.io/mcp/managed-connector/"
+    }
+  }
+}

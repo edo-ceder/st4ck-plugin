@@ -11,9 +11,14 @@ const parse = (relativePath) => JSON.parse(read(relativePath));
 
 const marketplace = parse(".claude-plugin/marketplace.json");
 const manifest = parse("st4ck/.claude-plugin/plugin.json");
+const managedManifest = parse("st4ck-managed-slack/.claude-plugin/plugin.json");
+const managedMcp = parse("st4ck-managed-slack/.mcp.json");
+const managedSkill = read("st4ck-managed-slack/skills/shared-channel-st4ck/SKILL.md");
 const browseCommand = read("st4ck/commands/st4ck-browse.md");
 const entry = marketplace.plugins?.find((plugin) => plugin.name === manifest.name);
+const managedEntry = marketplace.plugins?.find((plugin) => plugin.name === managedManifest.name);
 const manifestPath = "st4ck/.claude-plugin/plugin.json";
+const managedManifestPath = "st4ck-managed-slack/.claude-plugin/plugin.json";
 const baseRef = process.env.ST4CK_PLUGIN_BASE_REF ?? "origin/main";
 
 function check(condition, message) {
@@ -26,6 +31,40 @@ check(typeof manifest.version === "string" && parseSemver(manifest.version),
   "plugin.json must contain a semver plugin version");
 check(!Object.hasOwn(entry, "version"),
   "declare the plugin version only in plugin.json; marketplace version is a competing source");
+check(managedEntry, `marketplace has no entry for plugin ${managedManifest.name}`);
+check(managedEntry.source === "./st4ck-managed-slack",
+  "managed Slack marketplace source must remain ./st4ck-managed-slack");
+check(typeof managedManifest.version === "string" && parseSemver(managedManifest.version),
+  "managed Slack plugin.json must contain a semver plugin version");
+check(!Object.hasOwn(managedEntry, "version"),
+  "declare the managed Slack plugin version only in plugin.json");
+
+const managedServers = Object.entries(managedMcp.mcpServers ?? {});
+check(managedServers.length === 1,
+  "managed Slack plugin must declare exactly one MCP server");
+const [[managedServerName, managedServer]] = managedServers;
+check(managedServerName === "st4ck-managed-connector",
+  "managed Slack MCP server must be named st4ck-managed-connector");
+check(managedServer?.type === "http",
+  "managed Slack MCP server must use HTTP transport");
+check(managedServer?.url === "https://app.st4ck.io/mcp/managed-connector/",
+  "managed Slack MCP server must target the production managed connector endpoint");
+check(Object.keys(managedServer).sort().join(",") === "type,url",
+  "managed Slack MCP config may contain only type and url; credentials are injected by the Access bundle");
+check(!/(authorization|bearer|headers?|token|secret|api[_-]?key|\$\{)/i.test(JSON.stringify(managedMcp)),
+  "managed Slack MCP config must not contain credentials, headers, or placeholders");
+
+for (const [label, pattern] of [
+  ["bound-project discovery", /list_my_projects/],
+  ["returned-project restriction", /only that returned project ID/i],
+  ["project guide grounding", /get_project_guide/],
+  ["shared-channel privacy", /channel-safe/i],
+  ["untrusted-input handling", /untrusted input/i],
+  ["issue confirmation", /confirm/i],
+  ["Project Action confirmation", /explicit confirmation/i],
+]) {
+  check(pattern.test(managedSkill), `managed Slack skill does not teach ${label}`);
+}
 
 function git(args) {
   try {
@@ -446,6 +485,29 @@ if (payloadChanges.length > 0) {
     `plugin version ${manifest.version} must be greater than ${baseManifest.version} from ${baseRef}`);
 }
 
+const managedChangedTracked = git(["diff", "--name-only", baseRef, "--", "st4ck-managed-slack"])
+  .trim().split("\n").filter(Boolean);
+const managedChangedUntracked = git(["ls-files", "--others", "--exclude-standard", "--", "st4ck-managed-slack"])
+  .trim().split("\n").filter(Boolean);
+const managedPayloadChanges = [...new Set([...managedChangedTracked, ...managedChangedUntracked])];
+
+if (managedPayloadChanges.length > 0) {
+  let baseManagedManifest = null;
+  try {
+    baseManagedManifest = JSON.parse(git(["show", `${baseRef}:${managedManifestPath}`]));
+  } catch {
+    // A new package has no base version to compare. Its first release starts at 1.0.0.
+  }
+
+  if (baseManagedManifest) {
+    check(isGreaterVersion(managedManifest.version, baseManagedManifest.version),
+      `managed Slack plugin version ${managedManifest.version} must be greater than ${baseManagedManifest.version} from ${baseRef}`);
+  } else {
+    check(managedManifest.version === "1.0.0",
+      `new managed Slack plugin must begin at version 1.0.0, got ${managedManifest.version}`);
+  }
+}
+
 const browseSurface = [
   ["interactables", /browse interactables\b/],
   ["locate", /browse locate\b/],
@@ -483,4 +545,6 @@ check(!/\$SB_TOKEN|--local-storage[^\n]*auth-token/i.test(browseCommand),
   "auth tokens must never be passed through process arguments");
 validateDocumentedFilePaths("st4ck-browse command", browseCommand);
 
-process.stdout.write(`ok: st4ck plugin ${manifest.version} manifests and Browse contract are coherent\n`);
+process.stdout.write(
+  `ok: st4ck ${manifest.version} and st4ck-managed-slack ${managedManifest.version} manifests are coherent\n`,
+);

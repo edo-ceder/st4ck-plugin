@@ -17,6 +17,16 @@
       },
       "source": "./st4ck",
       "category": "development"
+    },
+    {
+      "name": "st4ck-managed-slack",
+      "description": "Project-bound st4ck context and actions for managed Claude Tags operating in shared Slack channels.",
+      "author": {
+        "name": "st4ck",
+        "email": "hello@st4ck.io"
+      },
+      "source": "./st4ck-managed-slack",
+      "category": "productivity"
     }
   ]
 }

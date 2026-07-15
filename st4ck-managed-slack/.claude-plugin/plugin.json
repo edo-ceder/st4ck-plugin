@@ -1,0 +1,17 @@
+{
+  "name": "st4ck-managed-slack",
+  "version": "1.0.0",
+  "description": "Project-bound st4ck context and actions for managed Claude Tags operating in shared Slack channels.",
+  "author": {
+    "name": "st4ck",
+    "email": "hello@st4ck.io"
+  },
+  "homepage": "https://st4ck.io",
+  "repository": "https://github.com/edo-ceder/st4ck-plugin",
+  "keywords": [
+    "st4ck",
+    "slack",
+    "claude-tag",
+    "mcp"
+  ]
+}
