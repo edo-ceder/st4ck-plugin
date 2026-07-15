@@ -18,6 +18,12 @@ Lifecycle commands coordinate purpose-built subagents, explicit human checkpoint
 
 ## What's bundled
 
+### Managed Slack package
+
+The marketplace also includes `st4ck-managed-slack`, a deliberately small package for a managed Claude Tag in one shared Slack project channel. It contributes one project-bound remote MCP connector and a concise shared-channel operating skill. The package contains no credential; its Claude Tag Access bundle supplies the project-bound authorization at runtime.
+
+Install this package only in the managed Access bundle for the intended Slack channel. Reuse the package, but use a separate project-bound credential and Access bundle for every project channel; never reuse one client's bundle in another channel. It is separate from the full Claude Code lifecycle plugin documented below.
+
 ### Lifecycle skills (the implementation flow)
 
 | Skill | Purpose |
@@ -95,6 +101,7 @@ Basic local component authoring is not intended to be a paywall. Full st4ck's di
 - `st4ck/skills/` — the bundled skill set (lifecycle + PRD authoring)
 - `st4ck/commands/` — slash command aliases
 - `st4ck/agents/` — role-specific subagents (code, QA, PRD reviewers)
+- `st4ck-managed-slack/` — dedicated managed Claude Tag package (one project-bound MCP endpoint + shared-channel skill)
 - `docs/` — methodology + architecture documentation
 - `poc/` — proof-of-concept work feeding back into the plugin
 
