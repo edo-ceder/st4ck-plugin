@@ -30,6 +30,12 @@ function check(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function frontmatterList(markdown, key) {
+  const match = markdown.match(new RegExp(`^${key}:\\s*(.+)$`, "m"));
+  check(match, `open-project command has no ${key} frontmatter`);
+  return match[1].split(",").map((value) => value.trim()).filter(Boolean);
+}
+
 check(entry, `marketplace has no entry for plugin ${manifest.name}`);
 check(entry.source === "./st4ck", "st4ck marketplace source must remain ./st4ck");
 check(typeof manifest.version === "string" && parseSemver(manifest.version),
@@ -69,17 +75,30 @@ for (const [label, surface] of [
     `${label} must document minimum Claude Code ${minimumClaudeVersion}`);
 }
 
+const allowedOpenProjectTools = frontmatterList(openProjectCommand, "allowed-tools");
+const disallowedOpenProjectTools = frontmatterList(openProjectCommand, "disallowed-tools");
+check(
+  allowedOpenProjectTools.length === 2
+  && allowedOpenProjectTools.includes("ToolSearch")
+  && allowedOpenProjectTools.includes("mcp__st4ck-pm__get_project_briefing"),
+  "open-project command must pre-approve only ToolSearch and the folder-bound PM briefing",
+);
+for (const [label, tool] of [
+  ["account-wide st4ck denial", "mcp__claude_ai_St4ck"],
+  ["development server denial", "mcp__st4ck-dev"],
+  ["qa server denial", "mcp__st4ck-qa"],
+  ["operations server denial", "mcp__st4ck-ops"],
+  ["repository read denial", "Read"],
+  ["repository write denial", "Write"],
+  ["shell denial", "Bash"],
+]) {
+  check(disallowedOpenProjectTools.includes(tool),
+    `open-project command does not enforce ${label}`);
+}
+
 for (const [label, pattern] of [
   ["manual-only invocation", /^disable-model-invocation:\s*true\s*$/m],
   ["exact folder-bound briefing call", /Call `mcp__st4ck-pm__get_project_briefing` exactly once with no arguments\./],
-  ["account-wide st4ck denial", /^disallowed-tools:.*(?:^|,\s*)mcp__claude_ai_St4ck(?:,|\s*$)/m],
-  ["deferred exact-tool discovery", /^allowed-tools:\s*ToolSearch,\s*mcp__st4ck-pm__get_project_briefing\s*$/m],
-  ["development server denial", /^disallowed-tools:.*(?:^|,\s*)mcp__st4ck-dev(?:,|\s*$)/m],
-  ["qa server denial", /^disallowed-tools:.*(?:^|,\s*)mcp__st4ck-qa(?:,|\s*$)/m],
-  ["operations server denial", /^disallowed-tools:.*(?:^|,\s*)mcp__st4ck-ops\s*$/m],
-  ["repository read denial", /^disallowed-tools:.*\bRead\b/m],
-  ["repository write denial", /^disallowed-tools:.*\bWrite\b/m],
-  ["shell denial", /^disallowed-tools:.*\bBash\b/m],
   ["other-connection prohibition", /Do not use a project-listing tool or another st4ck connection\./],
   ["plain success response", /Connected to <project\s+name>\./],
 ]) {
