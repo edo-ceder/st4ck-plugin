@@ -4,12 +4,16 @@
 
 st4ck has two product surfaces: `st4ck-lite`, the local OSS surface, and full st4ck, which pairs this plugin with an `app.st4ck.io` workspace. Full st4ck builds on Lite's PRD authoring, agent-driven recording, and deterministic replay and adds **agent-team lifecycle orchestration**, persistent intent, test/component lineage, attestation, impact analysis, and shared reuse. The MCP-backed lifecycle features require a workspace; the plugin is their agent-and-human client, not a standalone middle tier.
 
+Full st4ck requires Claude Code 2.1.152 or newer. That is the first version that
+applies the temporary tool restrictions used by `/st4ck:open-project`.
+
 ```bash
 # Inside Claude Code:
 /st4ck:implement "Add a per-team usage cap to the billing portal"   # full feature lifecycle
 /st4ck:debug "Profile edits aren't appearing in the activity feed"  # role-separated debug flow
 /st4ck:po-research "Should refunds be reversible after settlement?" # PO discovery + options
 /st4ck:impact                                                       # diff → which tests are affected
+/st4ck:open-project                                                 # open the project linked to this folder
 ```
 
 Lifecycle commands coordinate purpose-built subagents, explicit human checkpoints, and role-specific write restrictions where configured. Those controls reduce accidental role overlap; the authoritative lineage, attestation, execution, and required-review gates are enforced by the st4ck service.
@@ -28,6 +32,7 @@ Install this package only in the managed Access bundle for the intended Slack ch
 
 | Skill | Purpose |
 |---|---|
+| `/st4ck:open-project` | Open and confirm the st4ck project connected to the current folder |
 | `/st4ck:po-research` | Product-owner feature research — explores codebase, challenges requirements, surfaces logic gaps, presents solution options with effort/risk |
 | `/st4ck:plan-author` | Comprehensive implementation plans — phased tasks, security analysis, test strategy, migration files |
 | `/st4ck:implement` | Full feature lifecycle (requirements → plan → code → QA → deliver) with role-separated agents + human gates |

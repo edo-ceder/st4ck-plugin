@@ -17,6 +17,8 @@ Claude Code `tools` / `disallowedTools` frontmatter and role prompts provide use
 ## Prerequisites
 
 ### Required
+- **Claude Code 2.1.152 or newer.** This is the first version that applies the
+  temporary tool restrictions used by `/st4ck:open-project`.
 - **An `app.st4ck.io` workspace and its st4ck MCP servers** must be configured in your project `.mcp.json` or `~/.claude.json` for the MCP-backed lifecycle. This plugin cannot configure MCP servers (security restriction for plugins).
 
   Add to your project's `.mcp.json`:
@@ -69,6 +71,15 @@ Then `/reload-plugins` to activate. From a local checkout:
 ```
 
 ## Commands
+
+### `/st4ck:open-project` — Open This Folder's Project
+
+```text
+/st4ck:open-project
+```
+
+Opens and confirms the st4ck project connected to the current folder. Add Project
+installs the folder's connection before showing this command.
 
 ### `/implement` — Full Feature Lifecycle
 
