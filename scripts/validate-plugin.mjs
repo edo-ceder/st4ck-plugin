@@ -15,14 +15,25 @@ const managedManifest = parse("st4ck-managed-slack/.claude-plugin/plugin.json");
 const managedMcp = parse("st4ck-managed-slack/.mcp.json");
 const managedSkill = read("st4ck-managed-slack/skills/shared-channel-st4ck/SKILL.md");
 const browseCommand = read("st4ck/commands/st4ck-browse.md");
+const openProjectCommand = read("st4ck/commands/open-project.md");
+const rootReadme = read("README.md");
+const pluginReadme = read("st4ck/README.md");
+const validationWorkflow = read(".github/workflows/validate-plugin.yml");
 const entry = marketplace.plugins?.find((plugin) => plugin.name === manifest.name);
 const managedEntry = marketplace.plugins?.find((plugin) => plugin.name === managedManifest.name);
 const manifestPath = "st4ck/.claude-plugin/plugin.json";
 const managedManifestPath = "st4ck-managed-slack/.claude-plugin/plugin.json";
 const baseRef = process.env.ST4CK_PLUGIN_BASE_REF ?? "origin/main";
+const minimumClaudeVersion = "2.1.152";
 
 function check(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function frontmatterList(markdown, key) {
+  const match = markdown.match(new RegExp(`^${key}:\\s*(.+)$`, "m"));
+  check(match, `open-project command has no ${key} frontmatter`);
+  return match[1].split(",").map((value) => value.trim()).filter(Boolean);
 }
 
 check(entry, `marketplace has no entry for plugin ${manifest.name}`);
@@ -53,6 +64,46 @@ check(Object.keys(managedServer).sort().join(",") === "type,url",
   "managed Slack MCP config may contain only type and url; credentials are injected by the Access bundle");
 check(!/(authorization|bearer|headers?|token|secret|api[_-]?key|\$\{)/i.test(JSON.stringify(managedMcp)),
   "managed Slack MCP config must not contain credentials, headers, or placeholders");
+
+check(validationWorkflow.includes(`@anthropic-ai/claude-code@${minimumClaudeVersion}`),
+  `plugin validation must run on minimum supported Claude Code ${minimumClaudeVersion}`);
+for (const [label, surface] of [
+  ["marketplace README", rootReadme],
+  ["full plugin README", pluginReadme],
+]) {
+  check(surface.includes(`Claude Code ${minimumClaudeVersion} or newer`),
+    `${label} must document minimum Claude Code ${minimumClaudeVersion}`);
+}
+
+const allowedOpenProjectTools = frontmatterList(openProjectCommand, "allowed-tools");
+const disallowedOpenProjectTools = frontmatterList(openProjectCommand, "disallowed-tools");
+check(
+  allowedOpenProjectTools.length === 2
+  && allowedOpenProjectTools.includes("ToolSearch")
+  && allowedOpenProjectTools.includes("mcp__st4ck-pm__get_project_briefing"),
+  "open-project command must pre-approve only ToolSearch and the folder-bound PM briefing",
+);
+for (const [label, tool] of [
+  ["account-wide st4ck denial", "mcp__claude_ai_St4ck"],
+  ["development server denial", "mcp__st4ck-dev"],
+  ["qa server denial", "mcp__st4ck-qa"],
+  ["operations server denial", "mcp__st4ck-ops"],
+  ["repository read denial", "Read"],
+  ["repository write denial", "Write"],
+  ["shell denial", "Bash"],
+]) {
+  check(disallowedOpenProjectTools.includes(tool),
+    `open-project command does not enforce ${label}`);
+}
+
+for (const [label, pattern] of [
+  ["manual-only invocation", /^disable-model-invocation:\s*true\s*$/m],
+  ["exact folder-bound briefing call", /Call `mcp__st4ck-pm__get_project_briefing` exactly once with no arguments\./],
+  ["other-connection prohibition", /Do not use a project-listing tool or another st4ck connection\./],
+  ["plain success response", /Connected to <project\s+name>\./],
+]) {
+  check(pattern.test(openProjectCommand), `open-project command does not enforce ${label}`);
+}
 
 for (const [label, pattern] of [
   ["bound-project discovery", /list_my_projects/],

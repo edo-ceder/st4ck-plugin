@@ -38,7 +38,7 @@ jobs:
           node-version: 20
 
       - name: Install the supported Claude validator
-        run: npm install --global @anthropic-ai/claude-code@2.1.78
+        run: npm install --global @anthropic-ai/claude-code@2.1.152
 
       - name: Validate marketplace and plugin payload
         run: |
