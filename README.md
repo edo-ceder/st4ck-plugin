@@ -9,6 +9,7 @@ applies the temporary tool restrictions used by `/st4ck:open-project`.
 
 ```bash
 # Inside Claude Code:
+/st4ck:requirements-authoring "Add organization-level approval rules" # author requirements in the connected workspace
 /st4ck:implement "Add a per-team usage cap to the billing portal"   # full feature lifecycle
 /st4ck:debug "Profile edits aren't appearing in the activity feed"  # role-separated debug flow
 /st4ck:po-research "Should refunds be reversible after settlement?" # PO discovery + options
@@ -46,12 +47,13 @@ Install this package only in the managed Access bundle for the intended Slack ch
 | `/st4ck:st4ck-run` | Execute a deterministic test using the runner (with agentic-block IPC pause + rerun from failure) |
 | `/st4ck:st4ck-browse` | Drive a real browser one IPC primitive at a time, optional `--record` saves as a deterministic md test |
 
-### PRD authoring skills
+### Requirements and PRD authoring skills
 
-Source-grounded Product Requirements Document authoring — useful when a platform has been live for a while and the test/spec layer needs an intent anchor.
+Keep intended behavior and its source anchors in the same st4ck workspace, whether the work is a product's first feature or a later change to an established system.
 
 | Skill | Purpose |
 |---|---|
+| `/st4ck:requirements-authoring` | Create, extend, edit, restructure, or review requirements from authoritative discussions, decisions, designs, specifications, and evidence. Writes to the canonical st4ck Requirements & Specs module and verifies the final readback without inventing behavior from implementation plans. |
 | `/st4ck:prd-from-source` | Author a PRD by reading source rather than asking the user. Four iron rules; Phase 0 preliminaries (checks `get_project_users`, asks user for role anchor + extra docs); two-pass mechanical-scaffold + curated-intent approach; cross-module reuse rule; audience triple-target (non-technical / QA / dev); confidence markers (CONFIRMED / INFERRED / GAP). |
 | `/st4ck:prd-review` | Four-phase review pipeline — self-review → 3 parallel independent reviewers (PO / QA / Dev) → known-gaps-vs-code pass → bug-routing to dev tasks. Converges on diminishing returns. |
 
@@ -69,7 +71,7 @@ Three reviewer subagents — `prd-reviewer-po`, `prd-reviewer-qa`, `prd-reviewer
 
 **2. Server-enforced lineage and attestation.** The st4ck service persists test/component lineage, required intent and coverage attestations, execution evidence, and signatures. Eligible standard suites may self-sign only after a passing execution and non-empty end-to-end coverage attestation. High-risk or explicitly flagged suites — including security, version-gate, and high-blast-radius suites — reject self-signing and require an independent reviewer.
 
-**3. The intent layer is canonical.** PRDs, specs, and ADRs are the source of truth for behavior; code is the implementation that has to match them. When a test fails, the first question is "does the spec say this should pass?" — not "is the test wrong?". The PRD authoring skills bundled here exist because most platforms ship without this layer and only realize they need it after the first regression cycle.
+**3. The intent layer is canonical.** Requirements, PRDs, specs, and ADRs are the source of truth for behavior; code is the implementation that has to match them. When a test fails, the first question is "does the spec say this should pass?" — not "is the test wrong?". The authoring skills bundled here keep new and evolving product behavior anchored before implementation starts.
 
 **The result:** authoring cost trends *down* as the suite grows — every new test reuses signed components, every component reuses signed intent. Compare Gherkin/Cucumber, where each new scenario rebuilds glue code from scratch and step-definition maintenance scales linearly with the suite.
 
@@ -84,6 +86,7 @@ st4ck has two product surfaces. The plugin in this repository is the client half
 | Agent-driven record + deterministic md replay (zero LLM at replay) | ✓ | ✓ |
 | Locator-priority ladder (Tier-1 self-heal) | ✓ | ✓ |
 | PRD authoring + 3-angle review pipeline | ✓ | ✓ |
+| Server-backed requirements authoring + persistent decision anchors | — | ✓ |
 | Basic local component authoring + reuse | Intended OSS capability; local registry not yet shipped in the current Lite alpha | ✓, backed by the workspace registry |
 | Lifecycle orchestration (`po-research` → `plan` → `implement` → `debug` → `impact`) | — | ✓ |
 | Role-specific code + QA agent workflows | — | ✓ |
@@ -103,7 +106,7 @@ Basic local component authoring is not intended to be a paywall. Full st4ck's di
 ## What lives in this repo
 
 - `.claude-plugin/marketplace.json` — Claude Code marketplace metadata
-- `st4ck/skills/` — the bundled skill set (lifecycle + PRD authoring)
+- `st4ck/skills/` — the bundled skill set (requirements + PRD authoring + lifecycle)
 - `st4ck/commands/` — slash command aliases
 - `st4ck/agents/` — role-specific subagents (code, QA, PRD reviewers)
 - `st4ck-managed-slack/` — dedicated managed Claude Tag package (one project-bound MCP endpoint + shared-channel skill)

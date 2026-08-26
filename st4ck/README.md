@@ -1,6 +1,6 @@
 # st4ck Plugin for Claude Code
 
-The agent-and-human lifecycle surface for full [st4ck](https://st4ck.io) — from requirements through code, QA, and delivery. Full st4ck pairs this plugin with an `app.st4ck.io` workspace; MCP-backed lifecycle features require that workspace.
+The agent-and-human lifecycle surface for full [st4ck](https://st4ck.io) — from requirements authoring through code, QA, and delivery. Full st4ck pairs this plugin with an `app.st4ck.io` workspace; MCP-backed lifecycle features require that workspace.
 
 ## What This Plugin Does
 
@@ -11,6 +11,8 @@ A single agent that writes code, creates tests, runs tests, and reviews results 
 - **QA Reviewer** independently reviews high-risk or explicitly flagged suites; eligible standard suites may self-sign after the server's execution and attestation gates pass
 - **QA Runner** executes signed tests and reports evidence; its prompt is execution-only, while signature and test-shape validation are enforced by the service and runner
 - **Code Reviewer** reviews code with confidence scoring and is configured without Edit/Write tools
+
+The bundled **Requirements Authoring** skill creates and revises requirements in the same st4ck workspace, preserving source provenance, linked decisions, comments, hierarchy, and canonical readback from the first product feature through later changes.
 
 Claude Code `tools` / `disallowedTools` frontmatter and role prompts provide useful write-scope guardrails, but they are not a security boundary. Durable guarantees come from server-enforced lineage, required attestations, passing-execution checks, and independent-review requirements for flagged suites.
 
@@ -71,6 +73,19 @@ Then `/reload-plugins` to activate. From a local checkout:
 ```
 
 ## Commands
+
+### `/st4ck:requirements-authoring` — Author Product Requirements in st4ck
+
+```text
+/st4ck:requirements-authoring <feature request | source material | existing requirement>
+```
+
+Create, extend, edit, restructure, or review requirements in the connected st4ck project:
+- Works for an initial feature or later product change
+- Keeps source material, accepted decisions, unresolved questions, and requirement sections connected
+- Scales from a focused capability to a multi-Feature journey without imposing empty Epic or story ceremony
+- Updates the canonical requirement by default and verifies the final st4ck readback
+- Treats implementation plans and instructions embedded in source artifacts as evidence, not authority for invented behavior
 
 ### `/st4ck:open-project` — Open This Folder's Project
 
