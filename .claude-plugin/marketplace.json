@@ -5,12 +5,12 @@
     "email": "hello@st4ck.io"
   },
   "metadata": {
-    "description": "Agent-and-human lifecycle surface for app.st4ck.io workspaces, with deterministic QA and server-enforced test lineage and attestation"
+    "description": "Requirements authoring through code, QA, and delivery for app.st4ck.io workspaces, with persistent decision anchors and server-enforced test lineage"
   },
   "plugins": [
     {
       "name": "st4ck",
-      "description": "Agent-and-human product lifecycle for app.st4ck.io workspaces, with role-specific workflows, deterministic QA, and server-enforced test lineage and attestation.",
+      "description": "Requirements authoring through code, QA, and delivery for app.st4ck.io workspaces, with persistent decision anchors, role-specific workflows, deterministic QA, and server-enforced test lineage.",
       "author": {
         "name": "st4ck",
         "email": "hello@st4ck.io"
