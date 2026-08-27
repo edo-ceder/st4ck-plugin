@@ -1,0 +1,4 @@
+interface:
+  display_name: "st4ck Requirements Authoring"
+  short_description: "Author grounded product requirements in st4ck"
+  default_prompt: "Use $requirements-authoring to create or revise product requirements in the connected st4ck project from the authoritative source material and existing decision anchors."

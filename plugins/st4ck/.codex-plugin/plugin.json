@@ -1,0 +1,38 @@
+{
+  "name": "st4ck",
+  "version": "1.2.1",
+  "description": "Author and revise grounded product requirements in connected st4ck projects while preserving decisions, comments, provenance, hierarchy, and canonical readback.",
+  "author": {
+    "name": "st4ck",
+    "email": "hello@st4ck.io",
+    "url": "https://st4ck.io"
+  },
+  "homepage": "https://st4ck.io",
+  "repository": "https://github.com/edo-ceder/st4ck-plugin",
+  "keywords": [
+    "requirements",
+    "product-management",
+    "specifications",
+    "decisions",
+    "traceability"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "st4ck",
+    "shortDescription": "Author grounded requirements in connected st4ck projects.",
+    "longDescription": "Create, extend, edit, restructure, and review product requirements in the canonical st4ck workspace while preserving source and decision anchors.",
+    "developerName": "st4ck",
+    "category": "Engineering",
+    "capabilities": [
+      "Interactive",
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://st4ck.io",
+    "defaultPrompt": [
+      "Use $requirements-authoring to author this feature in st4ck.",
+      "Review this st4ck requirement for drift and unresolved decisions.",
+      "Extend this existing st4ck requirement without changing unrelated behavior."
+    ]
+  }
+}

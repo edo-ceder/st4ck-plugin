@@ -11,6 +11,8 @@ const parse = (relativePath) => JSON.parse(read(relativePath));
 
 const marketplace = parse(".claude-plugin/marketplace.json");
 const manifest = parse("st4ck/.claude-plugin/plugin.json");
+const codexMarketplace = parse(".agents/plugins/marketplace.json");
+const codexManifest = parse("plugins/st4ck/.codex-plugin/plugin.json");
 const managedManifest = parse("st4ck-managed-slack/.claude-plugin/plugin.json");
 const managedMcp = parse("st4ck-managed-slack/.mcp.json");
 const managedSkill = read("st4ck-managed-slack/skills/shared-channel-st4ck/SKILL.md");
@@ -20,6 +22,7 @@ const rootReadme = read("README.md");
 const pluginReadme = read("st4ck/README.md");
 const validationWorkflow = read(".github/workflows/validate-plugin.yml");
 const entry = marketplace.plugins?.find((plugin) => plugin.name === manifest.name);
+const codexEntry = codexMarketplace.plugins?.find((plugin) => plugin.name === codexManifest.name);
 const managedEntry = marketplace.plugins?.find((plugin) => plugin.name === managedManifest.name);
 const manifestPath = "st4ck/.claude-plugin/plugin.json";
 const managedManifestPath = "st4ck-managed-slack/.claude-plugin/plugin.json";
@@ -28,6 +31,27 @@ const minimumClaudeVersion = "2.1.152";
 
 function check(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function listFiles(relativeDirectory) {
+  const directory = path.join(root, relativeDirectory);
+  const files = [];
+
+  function walk(current, prefix = "") {
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const relative = path.posix.join(prefix, entry.name);
+      if (entry.isDirectory()) {
+        walk(path.join(current, entry.name), relative);
+      } else if (entry.isFile()) {
+        files.push(relative);
+      } else {
+        throw new Error(`${relativeDirectory}/${relative} must be a regular file or directory`);
+      }
+    }
+  }
+
+  walk(directory);
+  return files.sort();
 }
 
 function frontmatterList(markdown, key) {
@@ -42,6 +66,63 @@ check(typeof manifest.version === "string" && parseSemver(manifest.version),
   "plugin.json must contain a semver plugin version");
 check(!Object.hasOwn(entry, "version"),
   "declare the plugin version only in plugin.json; marketplace version is a competing source");
+check(codexMarketplace.name === marketplace.name,
+  "Claude and Codex marketplaces must use the same st4ck-marketplace identity");
+check(codexMarketplace.interface?.displayName === "st4ck",
+  "Codex marketplace display name must be st4ck");
+check(codexEntry, `Codex marketplace has no entry for plugin ${codexManifest.name}`);
+check(codexEntry.source?.source === "local"
+  && codexEntry.source?.path === "./plugins/st4ck",
+  "Codex st4ck marketplace source must remain ./plugins/st4ck");
+check(codexEntry.policy?.installation === "AVAILABLE"
+  && codexEntry.policy?.authentication === "ON_INSTALL",
+  "Codex st4ck marketplace policy must remain AVAILABLE and ON_INSTALL");
+check(codexEntry.category === "Engineering",
+  "Codex st4ck marketplace category must be Engineering");
+check(codexManifest.name === manifest.name,
+  "Claude and Codex manifests must use the same st4ck plugin name");
+check(codexManifest.version === manifest.version,
+  "Claude and Codex st4ck manifest versions must match");
+check(typeof codexManifest.version === "string" && parseSemver(codexManifest.version),
+  "Codex plugin.json must contain a semver plugin version");
+check(codexManifest.skills === "./skills/",
+  "Codex st4ck manifest must load skills from ./skills/");
+check(Array.isArray(codexManifest.interface?.defaultPrompt)
+  && codexManifest.interface.defaultPrompt.length > 0
+  && codexManifest.interface.defaultPrompt.length <= 3
+  && codexManifest.interface.defaultPrompt.every(
+    (prompt) => typeof prompt === "string" && prompt.length <= 128,
+  ),
+  "Codex st4ck default prompts must be a non-empty array of at most three 128-character strings");
+check(!fs.existsSync(path.join(root, "plugins/st4ck/.mcp.json")),
+  "Codex plugin must use the folder-bound st4ck connection rather than embed MCP credentials");
+
+const codexSkillDirectories = fs.readdirSync(path.join(root, "plugins/st4ck/skills"), {
+  withFileTypes: true,
+}).filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort();
+check(codexSkillDirectories.length === 1 && codexSkillDirectories[0] === "requirements-authoring",
+  "Codex package must expose only the reviewed requirements-authoring skill");
+
+const canonicalRequirementFiles = listFiles("st4ck/skills/requirements-authoring");
+const codexRequirementFiles = listFiles("plugins/st4ck/skills/requirements-authoring");
+check(JSON.stringify(codexRequirementFiles) === JSON.stringify(canonicalRequirementFiles),
+  "Codex requirements-authoring package file list drifted from the canonical skill");
+for (const relativeFile of canonicalRequirementFiles) {
+  check(
+    read(`plugins/st4ck/skills/requirements-authoring/${relativeFile}`)
+      === read(`st4ck/skills/requirements-authoring/${relativeFile}`),
+    `Codex requirements-authoring package drifted at ${relativeFile}`,
+  );
+}
+
+for (const requiredReadmeText of [
+  "codex plugin marketplace add edo-ceder/st4ck-plugin --ref main",
+  "codex plugin add st4ck@st4ck-marketplace --json",
+  "Start a new Codex task",
+]) {
+  check(rootReadme.includes(requiredReadmeText),
+    `marketplace README must document Codex installation: ${requiredReadmeText}`);
+}
 check(managedEntry, `marketplace has no entry for plugin ${managedManifest.name}`);
 check(managedEntry.source === "./st4ck-managed-slack",
   "managed Slack marketplace source must remain ./st4ck-managed-slack");
@@ -515,9 +596,13 @@ expectPathValidationFailure(
 
 requireBaseRef(baseRef);
 
-const changedTracked = git(["diff", "--name-only", baseRef, "--", "st4ck"])
+const changedTracked = git([
+  "diff", "--name-only", baseRef, "--", "st4ck", "plugins/st4ck", ".agents/plugins",
+])
   .trim().split("\n").filter(Boolean);
-const changedUntracked = git(["ls-files", "--others", "--exclude-standard", "--", "st4ck"])
+const changedUntracked = git([
+  "ls-files", "--others", "--exclude-standard", "--", "st4ck", "plugins/st4ck", ".agents/plugins",
+])
   .trim().split("\n").filter(Boolean);
 const payloadChanges = [...new Set([...changedTracked, ...changedUntracked])];
 
@@ -597,5 +682,5 @@ check(!/\$SB_TOKEN|--local-storage[^\n]*auth-token/i.test(browseCommand),
 validateDocumentedFilePaths("st4ck-browse command", browseCommand);
 
 process.stdout.write(
-  `ok: st4ck ${manifest.version} and st4ck-managed-slack ${managedManifest.version} manifests are coherent\n`,
+  `ok: st4ck ${manifest.version} Claude/Codex and st4ck-managed-slack ${managedManifest.version} manifests are coherent\n`,
 );

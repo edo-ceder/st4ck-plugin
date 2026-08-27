@@ -1,0 +1,20 @@
+{
+  "name": "st4ck-marketplace",
+  "interface": {
+    "displayName": "st4ck"
+  },
+  "plugins": [
+    {
+      "name": "st4ck",
+      "source": {
+        "source": "local",
+        "path": "./plugins/st4ck"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Engineering"
+    }
+  ]
+}

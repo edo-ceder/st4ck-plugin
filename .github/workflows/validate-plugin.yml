@@ -3,20 +3,24 @@ name: Validate plugin
 on:
   pull_request:
     paths:
+      - ".agents/plugins/**"
       - ".claude-plugin/**"
       - ".github/workflows/validate-plugin.yml"
       - "README.md"
       - "scripts/**"
+      - "plugins/st4ck/**"
       - "st4ck/**"
       - "st4ck-managed-slack/**"
   push:
     branches:
       - main
     paths:
+      - ".agents/plugins/**"
       - ".claude-plugin/**"
       - ".github/workflows/validate-plugin.yml"
       - "README.md"
       - "scripts/**"
+      - "plugins/st4ck/**"
       - "st4ck/**"
       - "st4ck-managed-slack/**"
 
