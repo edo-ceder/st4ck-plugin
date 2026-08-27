@@ -4,8 +4,8 @@
 
 st4ck has two product surfaces: `st4ck-lite`, the local OSS surface, and full st4ck, which pairs this plugin with an `app.st4ck.io` workspace. Full st4ck builds on Lite's PRD authoring, agent-driven recording, and deterministic replay and adds **agent-team lifecycle orchestration**, persistent intent, test/component lineage, attestation, impact analysis, and shared reuse. The MCP-backed lifecycle features require a workspace; the plugin is their agent-and-human client, not a standalone middle tier.
 
-Full st4ck requires Claude Code 2.1.152 or newer. That is the first version that
-applies the temporary tool restrictions used by `/st4ck:open-project`.
+The Claude Code package requires Claude Code 2.1.152 or newer. That is the first
+version that applies the temporary tool restrictions used by `/st4ck:open-project`.
 
 ```bash
 # Inside Claude Code:
@@ -18,6 +18,14 @@ applies the temporary tool restrictions used by `/st4ck:open-project`.
 ```
 
 Lifecycle commands coordinate purpose-built subagents, explicit human checkpoints, and role-specific write restrictions where configured. Those controls reduce accidental role overlap; the authoritative lineage, attestation, execution, and required-review gates are enforced by the st4ck service.
+
+In Codex, the full st4ck package currently exposes the requirements-authoring workflow:
+
+```text
+$requirements-authoring
+```
+
+The skill uses the st4ck project connection already installed for the current folder. The plugin contains no credential and does not create a competing local requirements store.
 
 ---
 
@@ -53,7 +61,7 @@ Keep intended behavior and its source anchors in the same st4ck workspace, wheth
 
 | Skill | Purpose |
 |---|---|
-| `/st4ck:requirements-authoring` | Create, extend, edit, restructure, or review requirements from authoritative discussions, decisions, designs, specifications, and evidence. Writes to the canonical st4ck Requirements & Specs module and verifies the final readback without inventing behavior from implementation plans. |
+| `/st4ck:requirements-authoring` in Claude Code; `$requirements-authoring` in Codex | Create, extend, edit, restructure, or review requirements from authoritative discussions, decisions, designs, specifications, and evidence. Writes to the canonical st4ck Requirements & Specs module and verifies the final readback without inventing behavior from implementation plans. |
 | `/st4ck:prd-from-source` | Author a PRD by reading source rather than asking the user. Four iron rules; Phase 0 preliminaries (checks `get_project_users`, asks user for role anchor + extra docs); two-pass mechanical-scaffold + curated-intent approach; cross-module reuse rule; audience triple-target (non-technical / QA / dev); confidence markers (CONFIRMED / INFERRED / GAP). |
 | `/st4ck:prd-review` | Four-phase review pipeline — self-review → 3 parallel independent reviewers (PO / QA / Dev) → known-gaps-vs-code pass → bug-routing to dev tasks. Converges on diminishing returns. |
 
@@ -106,6 +114,8 @@ Basic local component authoring is not intended to be a paywall. Full st4ck's di
 ## What lives in this repo
 
 - `.claude-plugin/marketplace.json` — Claude Code marketplace metadata
+- `.agents/plugins/marketplace.json` — Codex marketplace metadata for the same st4ck plugin identity
+- `plugins/st4ck/` — Codex package containing the Codex-compatible st4ck skills
 - `st4ck/skills/` — the bundled skill set (requirements + PRD authoring + lifecycle)
 - `st4ck/commands/` — slash command aliases
 - `st4ck/agents/` — role-specific subagents (code, QA, PRD reviewers)
@@ -126,6 +136,15 @@ In Claude Code:
 /plugin install st4ck@st4ck-marketplace
 ```
 
+In Codex:
+
+```bash
+codex plugin marketplace add edo-ceder/st4ck-plugin --ref main
+codex plugin add st4ck@st4ck-marketplace --json
+```
+
+Start a new Codex task after installation so the skill registry loads `requirements-authoring`. The folder must already have its full st4ck project connection; plugin installation does not create or replace that binding.
+
 Before releasing a plugin update, validate both Claude manifests/frontmatter and the local Browse/version contract:
 
 ```bash
@@ -134,7 +153,9 @@ claude plugin validate ./st4ck
 node scripts/validate-plugin.mjs
 ```
 
-The plugin version lives only in `st4ck/.claude-plugin/plugin.json`. Anthropic recommends avoiding a duplicate marketplace-entry version; one declaration makes release and cache behavior unambiguous. The contract check compares against `origin/main` by default. Fetch that ref first, or set `ST4CK_PLUGIN_BASE_REF=<existing-ref>` when validating a fork, shallow checkout, or another release base; a missing ref fails with an actionable error instead of an opaque Git failure.
+The Claude and Codex manifests carry the same plugin version because each client requires its own package manifest; the contract check enforces equality. Marketplace entries do not duplicate that version. The check compares against `origin/main` by default. Fetch that ref first, or set `ST4CK_PLUGIN_BASE_REF=<existing-ref>` when validating a fork, shallow checkout, or another release base; a missing ref fails with an actionable error instead of an opaque Git failure.
+
+`st4ck/skills/requirements-authoring` is the authoring source and `plugins/st4ck/skills/requirements-authoring` is its distributable Codex mirror. The contract check compares every file and fails if the package drifts from the source.
 
 The MCP-backed lifecycle skills require an `app.st4ck.io` workspace. Without one, the shared local surface remains usable: file-only PRD authoring, agent-driven recording, and deterministic replay. Basic local component authoring also belongs on the local OSS surface, although the current Lite alpha has not yet shipped its local registry.
 
