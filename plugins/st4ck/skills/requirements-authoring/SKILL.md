@@ -1,6 +1,6 @@
 ---
 name: requirements-authoring
-description: Create, extend, edit, restructure, or review product requirements in a st4ck project from authoritative conversations, decisions, designs, existing specifications, and evidence. Use for any planned product capability, from an initial feature to later changes in an established product; keep implementation plans from becoming invented product behavior.
+description: Create or materially revise product requirements in a st4ck project from authoritative conversations, decisions, designs, existing specifications, and evidence. Use when the user asks to author, extend, edit, or restructure canonical requirements, or explicitly requests a requirements-quality review. Do not use merely to locate, retrieve, read, summarize, or analyze existing requirements as background for another task.
 metadata:
   short-description: Author grounded product requirements in st4ck
 ---
