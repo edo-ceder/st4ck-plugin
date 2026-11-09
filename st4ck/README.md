@@ -96,6 +96,19 @@ Create, extend, edit, restructure, or review requirements in the connected st4ck
 Opens and confirms the st4ck project connected to the current folder. Add Project
 installs the folder's connection before showing this command.
 
+### `/st4ck:build` — Build a Major Feature as a Build Plan
+
+```text
+/st4ck:build "Replace the billing module with a payments service"
+/st4ck:build <plan_id> builder
+```
+
+With a feature, starts planning it as a st4ck build plan: requirements, design,
+and a ladder of rungs the project owner approves and closes on the Build Plans
+page. With a plan ID and a role (`lead`, `builder` or `checker`), starts that
+session from its brief. The steps come from the st4ck dev server, not from this
+command.
+
 ### `/implement` — Full Feature Lifecycle
 
 ```

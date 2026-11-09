@@ -42,6 +42,7 @@ Install this package only in the managed Access bundle for the intended Slack ch
 | Skill | Purpose |
 |---|---|
 | `/st4ck:open-project` | Open and confirm the st4ck project connected to the current folder |
+| `/st4ck:build` | Plan and build a major feature as a st4ck build plan, or start a lead, builder or checker session from its brief |
 | `/st4ck:po-research` | Product-owner feature research — explores codebase, challenges requirements, surfaces logic gaps, presents solution options with effort/risk |
 | `/st4ck:plan-author` | Comprehensive implementation plans — phased tasks, security analysis, test strategy, migration files |
 | `/st4ck:implement` | Full feature lifecycle (requirements → plan → code → QA → deliver) with role-separated agents + human gates |
